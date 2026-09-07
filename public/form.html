@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MiseAI — Request access</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cream:#8E8971;--cream-warm:#BBB791;--ink:#212121;--ink-soft:#2F2E22;
+    --green:#0A5C58;--green-soft:#0A6F6A;--gold-ink:#45420A;
+    --accent-yellow:#F8F271;--line:rgba(33,33,33,.22);--card-bg:#BBB791;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(900px 520px at 50% -8%,rgba(255,255,255,.22),transparent 70%),
+      var(--cream);
+    background-attachment:fixed;
+    color:var(--ink);font-family:'Inter',sans-serif;line-height:1.55;font-size:16px;
+  }
+  h1,h2,h3{font-family:'Fraunces',Georgia,serif;font-weight:500;letter-spacing:-.01em;}
+  a{color:inherit;}
+  .shell{max-width:720px;margin:0 auto;padding:0 24px;}
+
+  nav{position:sticky;top:0;z-index:100;background:rgba(33,33,33,.94);border-bottom:1px solid var(--line);}
+  nav .shell{display:flex;align-items:center;justify-content:space-between;height:64px;max-width:1080px;}
+  .logo{font-family:'Fraunces',Georgia,serif;font-size:19px;font-weight:600;color:var(--ink);text-decoration:none;}
+
+  main{padding:64px 0 100px;}
+  .kicker{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--gold-ink);font-weight:700;margin-bottom:14px;}
+  h1{font-size:clamp(30px,4.5vw,42px);line-height:1.12;margin-bottom:14px;}
+  .lede{color:var(--ink-soft);font-size:17px;margin-bottom:36px;max-width:520px;}
+
+  .reassure{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:44px;box-shadow:0 14px 30px -14px rgba(33,33,33,.4);}
+  .reassure-item{background:var(--card-bg);padding:24px;}
+  .reassure-item .rlabel{font-family:'JetBrains Mono',monospace;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--gold-ink);font-weight:700;margin-bottom:8px;}
+  .reassure-item p{font-size:15px;color:var(--ink-soft);}
+  @media (max-width:640px){.reassure{grid-template-columns:1fr;}}
+
+  form{background:var(--card-bg);border:1px solid var(--line);border-radius:12px;padding:36px 32px;
+    box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 18px 40px -16px rgba(33,33,33,.5);}
+  .req-note{font-size:13px;color:var(--gold-ink);margin-bottom:24px;font-weight:600;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media (max-width:560px){.row2{grid-template-columns:1fr;}}
+  label{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink);font-weight:600;margin:18px 0 6px;}
+  label:first-of-type{margin-top:0;}
+  label em{color:var(--gold-ink);font-style:normal;}
+  input,select,textarea{
+    width:100%;background:rgba(255,255,255,.35);border:1px solid var(--line);border-radius:8px;
+    padding:12px 13px;font:15px 'Inter',sans-serif;color:var(--ink);outline:none;min-height:46px;
+  }
+  textarea{min-height:90px;resize:vertical;font-family:'Inter',sans-serif;}
+  input:focus,select:focus,textarea:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(10,92,88,.18);}
+  ::placeholder{color:rgba(33,33,33,.45);}
+
+  button{
+    width:100%;margin-top:28px;background:var(--ink);color:var(--accent-yellow);border:none;border-radius:8px;
+    padding:16px;font:13px 'Inter',sans-serif;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;
+    min-height:52px;transition:background .2s,transform .15s;
+  }
+  button:hover:not(:disabled){background:var(--green);transform:translateY(-1px);}
+  button:disabled{opacity:.5;cursor:not-allowed;}
+
+  .err{background:rgba(178,50,50,.10);border:1px solid #B23232;color:#B23232;border-radius:6px;padding:11px 13px;font-size:14px;margin-top:16px;}
+  .done{text-align:center;padding:20px 0;}
+  .done .big{font-size:22px;margin-bottom:12px;}
+  .done p{color:var(--ink-soft);font-size:15px;}
+
+  footer{border-top:1px solid var(--line);padding:32px 0;text-align:center;}
+  footer p{font-size:14px;color:var(--gold-ink);}
+</style>
+</head>
+<body>
+
+<nav><div class="shell"><a href="index.html" class="logo">MiseAI</a></div></nav>
+
+<main>
+  <div class="shell">
+    <div class="kicker">Request access</div>
+    <h1>Tell us about your kitchen.</h1>
+    <p class="lede">A few details on your operation, and we'll follow up personally — usually within a day.</p>
+
+    <div class="reassure">
+      <div class="reassure-item">
+        <div class="rlabel">Onboarding by hand</div>
+        <p>We're bringing on new kitchens ourselves right now — no automated approval, a real reply from a real person.</p>
+      </div>
+      <div class="reassure-item">
+        <div class="rlabel">Nothing to lose</div>
+        <p>No card at signup. Your data stays yours, exportable any time you want it.</p>
+      </div>
+    </div>
+
+    <form id="f" novalidate>
+      <div id="card">
+        <p class="req-note">All fields below — except notes — are required.</p>
+
+        <div class="row2">
+          <div><label for="first_name">First name <em>*</em></label><input id="first_name" name="first_name" autocomplete="given-name" required></div>
+          <div><label for="last_name">Last name <em>*</em></label><input id="last_name" name="last_name" autocomplete="family-name" required></div>
+        </div>
+
+        <label for="work_email">Work email <em>*</em></label>
+        <input id="work_email" name="work_email" type="email" inputmode="email" autocomplete="email" required>
+
+        <label for="restaurant_name">Restaurant / group <em>*</em></label>
+        <input id="restaurant_name" name="restaurant_name" autocomplete="organization" required>
+
+        <div class="row2">
+          <div>
+            <label for="role">Role <em>*</em></label>
+            <select id="role" name="role" required>
+              <option value="">Select one</option>
+              <option>Owner</option>
+              <option>Chef / kitchen lead</option>
+              <option>General manager</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div>
+            <label for="kitchen_type">Kitchen type <em>*</em></label>
+            <select id="kitchen_type" name="kitchen_type" required>
+              <option value="">Select one</option>
+              <option>Full service</option>
+              <option>Quick service</option>
+              <option>Food truck</option>
+              <option>Bar / lounge</option>
+              <option>Catering</option>
+              <option>Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row2">
+          <div><label for="locations">Locations <em>*</em></label><input id="locations" name="locations" type="number" min="1" inputmode="numeric" placeholder="e.g. 1" required></div>
+          <div><label for="covers_per_night">Covers per night (avg) <em>*</em></label><input id="covers_per_night" name="covers_per_night" type="number" min="0" inputmode="numeric" placeholder="e.g. 80" required></div>
+        </div>
+
+        <label for="pos_system">POS / accounting (if any) <em>*</em></label>
+        <input id="pos_system" name="pos_system" placeholder="e.g. Toast, Square, QuickBooks — or “none”" required>
+
+        <label for="notes">Notes</label>
+        <textarea id="notes" name="notes" placeholder="Anything else worth knowing"></textarea>
+
+        <button type="submit" id="go">Request access</button>
+        <div id="err"></div>
+      </div>
+    </form>
+  </div>
+</main>
+
+<footer><div class="shell"><p>MiseAI · michael@miseai-0000.com</p></div></footer>
+
+<script>
+var SIGNUP_ENDPOINT = 'https://qhfmywontdwwfapowqpo.supabase.co/functions/v1/signup';
+var f = document.getElementById('f'), go = document.getElementById('go'), err = document.getElementById('err'), card = document.getElementById('card');
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function val(id){return document.getElementById(id).value.trim();}
+
+f.addEventListener('submit', async function(ev){
+  ev.preventDefault();
+  err.innerHTML = '';
+
+  var body = {
+    first_name: val('first_name'),
+    last_name: val('last_name'),
+    work_email: val('work_email'),
+    restaurant_name: val('restaurant_name'),
+    role: val('role'),
+    kitchen_type: val('kitchen_type'),
+    locations: val('locations'),
+    covers_per_night: val('covers_per_night'),
+    pos_system: val('pos_system'),
+    notes: val('notes')
+  };
+
+  var required = ['first_name','last_name','work_email','restaurant_name','role','kitchen_type','locations','covers_per_night','pos_system'];
+  for (var i = 0; i < required.length; i++) {
+    if (!body[required[i]]) { err.innerHTML = '<div class="err">Please fill in every field above notes.</div>'; return; }
+  }
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.work_email)) {
+    err.innerHTML = '<div class="err">That email address does not look right.</div>';
+    return;
+  }
+
+  go.disabled = true; go.textContent = 'Sending…';
+  try {
+    var res = await fetch(SIGNUP_ENDPOINT, {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    var data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || 'Something went wrong.');
+
+    card.innerHTML =
+      '<div class="done">'
+      + '<div class="big">Thanks, ' + esc(body.first_name) + '.</div>'
+      + '<p>' + esc(body.restaurant_name) + ' is on our list. We\'ll reply at <b>' + esc(body.work_email) + '</b> within a day.</p>'
+      + '</div>';
+  } catch (e) {
+    err.innerHTML = '<div class="err">' + esc(e.message) + '</div>';
+    go.disabled = false; go.textContent = 'Request access';
+  }
+});
+</script>
+
+</body>
+</html>

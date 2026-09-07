@@ -22,6 +22,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const MAIL_DOMAIN = Deno.env.get('MISE_MAIL_DOMAIN') ?? 'in.miseai-0000.com';
 const FROM_EMAIL = Deno.env.get('MISE_FROM_EMAIL') ?? `MiseAI <welcome@${MAIL_DOMAIN}>`;
+const OWNER_EMAIL = Deno.env.get('MISE_OWNER_EMAIL') ?? 'michael@miseai-0000.com';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -34,6 +35,61 @@ const json = (b, s = 200) =>
 const slugify = (s) =>
   String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+
+const escHtml = (s) =>
+  String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/**
+ * Tell the owner a new signup came in, with whatever screening details were
+ * submitted, so onboarding can stay a manual, personal reply rather than
+ * automatic access. Never throws -- a failed notification should not block
+ * the client's own signup from completing.
+ */
+async function sendOwnerNotification(clientId, name, contactName, contactEmail, phone, screening) {
+  const key = Deno.env.get('RESEND_API_KEY');
+  if (!key) {
+    console.warn('[signup] RESEND_API_KEY is not set; cannot notify the owner of this signup.');
+    return { sent: false, reason: 'RESEND_API_KEY not set' };
+  }
+  const rows = [
+    ['Restaurant', name],
+    ['Contact', contactName],
+    ['Email', contactEmail],
+    ['Phone', phone],
+    ['Role', screening.role],
+    ['Kitchen type', screening.kitchenType],
+    ['Locations', screening.locations],
+    ['Covers/night (avg)', screening.coversPerNight],
+    ['POS / accounting', screening.posSystem],
+    ['Notes', screening.notes],
+    ['Client ID', clientId],
+  ].filter(([, v]) => v);
+  const html = `
+    <p>New MiseAI signup to review:</p>
+    <ul>${rows.map(([k, v]) => `<li><strong>${escHtml(k)}:</strong> ${escHtml(v)}</li>`).join('')}</ul>
+  `;
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: FROM_EMAIL,
+        to: OWNER_EMAIL,
+        subject: `New signup: ${name}`,
+        html,
+      }),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      console.error(`[signup] owner notification failed (${res.status}): ${detail}`);
+      return { sent: false, reason: `Resend HTTP ${res.status}` };
+    }
+    return { sent: true };
+  } catch (err) {
+    console.error('[signup] owner notification threw:', err.message);
+    return { sent: false, reason: err.message };
+  }
+}
 
 /**
  * Send the intake address by email. Never throws -- a failed send should not
@@ -80,10 +136,26 @@ async function signup(req) {
   try { body = await req.json(); }
   catch { return json({ success: false, error: 'Send JSON.' }, 400); }
 
-  const name = String(body.name ?? '').trim();
-  const contactName = String(body.contact_name ?? '').trim() || null;
-  const contactEmail = String(body.contact_email ?? '').trim().toLowerCase() || null;
+  // The request-access form (public/form.html) sends a richer set of fields
+  // than the original embedded GET page below; accept either shape.
+  const firstName = String(body.first_name ?? '').trim();
+  const lastName = String(body.last_name ?? '').trim();
+  const name = String(body.name ?? body.restaurant_name ?? '').trim();
+  const contactName = String(body.contact_name ?? `${firstName} ${lastName}`).trim() || null;
+  const contactEmail = String(body.contact_email ?? body.work_email ?? '').trim().toLowerCase() || null;
   const phone = String(body.contact_phone ?? '').trim() || null;
+
+  // Screening fields, present only from the richer request-access form.
+  // Never stored in Postgres -- just relayed to the owner for manual review,
+  // so adding a field here never needs a schema migration.
+  const screening = {
+    role: String(body.role ?? '').trim(),
+    kitchenType: String(body.kitchen_type ?? '').trim(),
+    locations: String(body.locations ?? '').trim(),
+    coversPerNight: String(body.covers_per_night ?? '').trim(),
+    posSystem: String(body.pos_system ?? '').trim(),
+    notes: String(body.notes ?? '').trim(),
+  };
 
   if (name.length < 2) return json({ success: false, error: 'Restaurant name is required.' }, 400);
   if (!contactEmail) return json({ success: false, error: 'An email address is required -- that is now the only way we can send you your invoice address.' }, 400);
@@ -120,6 +192,7 @@ async function signup(req) {
 
   const trialDays = 14;
   const emailResult = await sendWelcomeEmail(contactEmail, name, intake, trialDays);
+  await sendOwnerNotification(data, name, contactName, contactEmail, phone, screening);
 
   console.log(`[signup] ${name} -> ${data} (${intake}) email_sent=${emailResult.sent}${emailResult.sent ? '' : ` reason=${emailResult.reason}`}`);
 
