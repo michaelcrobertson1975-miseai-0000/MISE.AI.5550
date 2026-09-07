@@ -549,6 +549,9 @@ b,strong{font-weight:400;}
 .pm-page .status-badge.in_progress{background:rgba(122,106,61,0.12);color:var(--brand-accent);border-color:var(--brand-accent);}
 .pm-page .status-badge.complete{background:var(--alert-success);color:var(--bg-card);border-color:var(--alert-success);}
 .pm-page .status-badge.flagged{background:var(--alert-danger-wash);color:var(--alert-danger);border-color:var(--alert-danger);}
+/* Nothing counted / no par set -- deliberately quiet, so an unanswered
+   question never reads as either a warning or an all-clear. */
+.pm-page .status-badge.unknown{background:transparent;color:var(--text-faint);border-color:var(--border-subtle);border-style:dashed;}
 
 /* Alert inline / banner */
 .pm-page .alert-inline{display:inline-flex;align-items:center;gap:4px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;}
@@ -1925,10 +1928,12 @@ function alcCollect(){
   // ── Order Food / Order Beverage below par ──
   if(typeof window.OrderGuideItems === 'function'){
     window.OrderGuideItems().forEach(it => {
-      if(!it.skipped && (it.onHand||0) < (it.par||0)){
+      // Both figures must be real. With (it.onHand||0) an UNCOUNTED item
+      // reads as 0 and fires a false below-par alert the moment a par is set.
+      if(!it.skipped && it.onHand != null && it.par != null && it.onHand < it.par){
         items.push({
           key: 'order-food-'+it.id,
-          source: 'order', severity: (it.onHand||0) <= 0 ? 'high' : 'medium',
+          source: 'order', severity: it.onHand <= 0 ? 'high' : 'medium',
           title: it.name,
           sub: `Order Food · ${it.cat} · ${it.onHand} on hand vs ${it.par} par`,
           detail: [
@@ -1943,10 +1948,10 @@ function alcCollect(){
   }
   if(typeof window.OrderBeverageItems === 'function'){
     window.OrderBeverageItems().forEach(it => {
-      if(!it.skipped && (it.onHand||0) < (it.par||0)){
+      if(!it.skipped && it.onHand != null && it.par != null && it.onHand < it.par){
         items.push({
           key: 'order-bev-'+it.id,
-          source: 'order', severity: (it.onHand||0) <= 0 ? 'high' : 'medium',
+          source: 'order', severity: it.onHand <= 0 ? 'high' : 'medium',
           title: it.name,
           sub: `Order Beverage · ${it.cat} · ${it.onHand} on hand vs ${it.par} par`,
           detail: [
@@ -2095,11 +2100,22 @@ function miseAppend(text, who){
 let miseHistory = [];
 function miseContextSnapshot(){
   try{
-    const mixTotalRevenue = mixItems.reduce((sum,it)=>sum+mixRevenue(it),0);
+    // Anything unknown goes to the assistant as null, never as 0 -- it will
+    // talk about these figures as facts, so a fabricated $0.00 becomes a
+    // fabricated answer about the restaurant's revenue.
+    const priced = mixItems.filter(it=>mixRevenue(it)!=null);
+    const mixTotalRevenue = priced.length ? priced.reduce((sum,it)=>sum+mixRevenue(it),0) : null;
     const inv = invLines.map(l=>({name:l.name,old:l.oldPrice,new:l.newPrice,qty:l.qty,unit:l.unit,status:l.status}));
     return {
       tab: miseCurrentTabLabel(),
-      productMix: { topItems: mixItems.slice().sort((a,b)=>mixRevenue(b)-mixRevenue(a)).slice(0,10).map(it=>({name:it.name,category:it.category,qty:it.qty,revenue:+mixRevenue(it).toFixed(2),foodCostPct:it.foodCostPct})), totalRevenue:+mixTotalRevenue.toFixed(2) },
+      productMix: {
+        topItems: mixItems.slice().sort((a,b)=>mixRevenueOr0(b)-mixRevenueOr0(a)).slice(0,10).map(it=>{
+          const r = mixRevenue(it);
+          return { name:it.name, category:it.category, qty:it.qty, revenue: r==null ? null : +r.toFixed(2), foodCostPct:it.foodCostPct };
+        }),
+        totalRevenue: mixTotalRevenue==null ? null : +mixTotalRevenue.toFixed(2),
+        revenueNote: mixTotalRevenue==null ? 'No menu prices on file yet -- revenue is unknown, not zero.' : undefined
+      },
       invoices: inv.slice(0,40)
     };
   }catch(e){ return { tab: miseCurrentTabLabel() }; }
@@ -2147,7 +2163,16 @@ function closeModal(id){ document.getElementById(id).classList.remove('open'); d
 // PRODUCT MIX
 // ═══════════════════════════════════════
 
-function mixRevenue(it){ return it.qty * it.price; }
+// Revenue is unknowable without a menu price -- qty * null is 0 in JS, which
+// is how "no menu prices on file" turned into a confident $0.00. The server
+// already sends the answer (or null); use it, and only fall back to the
+// multiplication when there really is a price to multiply by.
+function mixRevenue(it){
+  if(it.revenue != null) return it.revenue;
+  return (it.price == null || it.qty == null) ? null : it.qty * it.price;
+}
+// For sorting/summing only, where a missing revenue must not outrank a real one.
+function mixRevenueOr0(it){ const r = mixRevenue(it); return r == null ? 0 : r; }
 
 function mixCategories(){
   return Array.from(new Set(mixItems.map(it=>it.category).filter(Boolean)));
@@ -2165,6 +2190,7 @@ function mixFromApiItem(it){
     category: it.category || 'Uncategorized',
     qty: it.units_sold,
     price: it.menu_price,          // may be null
+    revenue: it.revenue,           // server's figure; null until a price exists
     foodCostPct: it.food_cost_pct, // may be null
     _hasMenuPrice: !!it.has_menu_price,
   };
@@ -2209,7 +2235,7 @@ function renderMix(){
   let rows = mixItems.slice();
   if(mixFilter !== 'all') rows = rows.filter(it=>it.category===mixFilter);
 
-  const totalRevenueAll = mixItems.reduce((sum,it)=>sum+mixRevenue(it),0);
+  const totalRevenueAll = mixItems.reduce((sum,it)=>sum+mixRevenueOr0(it),0);
 
   if(!mixItems.length){
     tbody.innerHTML=''; cardsWrap.innerHTML='';
@@ -2224,11 +2250,11 @@ function renderMix(){
   } else {
     empty.style.display='none'; emptyMobile.style.display='none';
 
-    rows.sort((a,b)=>mixRevenue(b)-mixRevenue(a));
+    rows.sort((a,b)=>mixRevenueOr0(b)-mixRevenueOr0(a));
 
     const rowData = rows.map(it=>{
       const rev = mixRevenue(it);
-      const pctOfSales = totalRevenueAll>0 ? (rev/totalRevenueAll*100) : 0;
+      const pctOfSales = (rev!=null && totalRevenueAll>0) ? (rev/totalRevenueAll*100) : null;
       const fcClass = it.foodCostPct==null ? 'flat' : it.foodCostPct<=25 ? 'green' : it.foodCostPct>=35 ? 'red' : 'flat';
       return {it, rev, pctOfSales, fcClass};
     });
@@ -2238,8 +2264,8 @@ function renderMix(){
         <td class="inv-td-name">${it.name}</td>
         <td>${it.category||'—'}</td>
         <td>${it.qty}</td>
-        <td>${it._hasMenuPrice ? fmt$(rev) : '<span style="color:var(--text-faint);font-size:11px;">no menu price yet</span>'}</td>
-        <td>${it._hasMenuPrice ? pctOfSales.toFixed(1)+'%' : '—'}</td>
+        <td>${(it._hasMenuPrice && rev!=null) ? fmt$(rev) : '<span style="color:var(--text-faint);font-size:11px;">no menu price yet</span>'}</td>
+        <td>${(it._hasMenuPrice && pctOfSales!=null) ? pctOfSales.toFixed(1)+'%' : '—'}</td>
         <td>${it.foodCostPct!=null ? `<span class="inv-td-pct ${fcClass==='red'?'up':fcClass==='green'?'down':'flat'}">${it.foodCostPct.toFixed(1)}%</span>` : '<span style="color:var(--text-faint);font-size:11px;">—</span>'}</td>
       </tr>`
     ).join('');
@@ -2253,7 +2279,7 @@ function renderMix(){
         <div class="inv-card-prices">${it.category||'—'} · <b>${it.qty}</b> sold</div>
         <div class="inv-card-row">
           <div class="inv-card-impact pos">${it._hasMenuPrice ? fmt$(rev)+' revenue' : 'no menu price yet'}</div>
-          <div style="color:var(--text-muted);font-family:var(--font-mono);font-size:11px;">${it._hasMenuPrice ? pctOfSales.toFixed(1)+'% of sales' : ''}</div>
+          <div style="color:var(--text-muted);font-family:var(--font-mono);font-size:11px;">${(it._hasMenuPrice && pctOfSales!=null) ? pctOfSales.toFixed(1)+'% of sales' : ''}</div>
         </div>
       </div>`
     ).join('');
@@ -2334,7 +2360,13 @@ async function loadInvoicePriceMoves(){
 
 
 
-function invPctChange(l){ return ((l.newPrice - l.oldPrice) / l.oldPrice) * 100; }
+// A previous price of zero (a credit or comped line) has no percentage
+// change to report -- dividing by it yields Infinity, which renders as a
+// nonsense move rather than an absent one.
+function invPctChange(l){
+  if(l.oldPrice == null || l.newPrice == null || !l.oldPrice) return null;
+  return ((l.newPrice - l.oldPrice) / l.oldPrice) * 100;
+}
 // Real dollar impact comes straight from v_item_price_variance server-side
 // (quantity actually purchased x price delta) -- never re-derived from a
 // qty this module doesn't really have.
@@ -2430,7 +2462,7 @@ function renderInvoices(){
     tbody.innerHTML = rowData.map(({l,pct,diff,flagged,pctClass,arrow,impactLabel,statusLabel,statusClass})=>
       `<tr class="${flagged?'flagged':''}">
         <td class="inv-td-name">${l.name}</td>
-        <td><span class="inv-price-move">$${l.oldPrice.toFixed(2)} → $${l.newPrice.toFixed(2)}/${l.unit}</span> <span class="inv-td-pct ${pctClass}">${pct>0?'+':''}${pct.toFixed(1)}%</span></td>
+        <td><span class="inv-price-move">${(l.oldPrice==null||l.newPrice==null) ? '—' : '$'+l.oldPrice.toFixed(2)+' → $'+l.newPrice.toFixed(2)+'/'+l.unit}</span> <span class="inv-td-pct ${pctClass}">${pct==null ? '—' : (pct>0?'+':'')+pct.toFixed(1)+'%'}</span></td>
         <td><span class="inv-spark">${invSparklineSVG(l.history)}<span class="inv-arrow">${arrow}</span></span></td>
         <td><div>${impactLabel}</div></td>
         <td><button class="inv-status ${statusClass}" onclick="toggleInvStatus('${l.id}')">${statusLabel}</button></td>
@@ -2441,7 +2473,7 @@ function renderInvoices(){
       `<div class="inv-card ${flagged?'flagged':''}">
         <div class="inv-card-top">
           <div class="inv-card-name">${l.name}</div>
-          <div class="inv-card-pct ${pctClass}">${pct>0?'+':''}${pct.toFixed(1)}%</div>
+          <div class="inv-card-pct ${pctClass}">${pct==null ? '—' : (pct>0?'+':'')+pct.toFixed(1)+'%'}</div>
         </div>
         <div class="inv-card-prices"><b>$${l.oldPrice.toFixed(2)}</b> → <b>$${l.newPrice.toFixed(2)}</b> /${l.unit}</div>
         <div class="inv-card-row">
@@ -2509,7 +2541,11 @@ let corrSavedDocs = {};
 
 async function fetchCorrectionsQueue(){
   try{
-    const res = await fetch(`${CORR_API_BASE}/api/invoices/review-queue?restaurant_id=${encodeURIComponent(CORR_RESTAURANT_ID)}`);
+    // Sends api_token like every other client-facing call. The api function
+    // does not check it yet (it is the last one that still trusts a bare
+    // restaurant_id) -- sending it now means turning that check on server-side
+    // does not break this tab.
+    const res = await fetch(`${CORR_API_BASE}/api/invoices/review-queue?${miseAuthQS()}`);
     const data = await res.json();
     if(!res.ok || !data.success) throw new Error(data.error || 'Failed to load review queue');
     correctionsQueue = (data.queue || []).map(doc => ({
@@ -2583,6 +2619,7 @@ async function saveCorrection(docId){
   // this SKU auto-match next time, with zero owner input.
   const payload = {
     restaurant_id: CORR_RESTAURANT_ID,
+    api_token: MISE_API_TOKEN,   // ignored by api today; sent so enabling the check is a server-only change
     document_id: doc.document_id,
     invoice_id: doc.invoice_id,
     header: {
@@ -3886,6 +3923,13 @@ uplRenderRecent();
   // (cat/name/sub/unit/onHand/par/price/vendor/approved/skipped/id) so none of
   // that rendering code had to change -- only where the data comes from did.
   // id is the real ingredients.id (uuid), not a local counter.
+  // A count nobody has taken is not the same as a count of zero, and a par
+  // nobody has set is not a par of zero. Coercing either to 0 here is what
+  // made every uncounted ingredient render as "Below Par" -- null travels all
+  // the way to the render instead, so "not counted yet" stays its own answer.
+  const gNum = v => (v == null || v === '' || Number.isNaN(Number(v))) ? null : Number(v);
+  const gShow = v => v == null ? '—' : String(v);
+
   function guideFromApiItem(it){
     return {
       id: it.id,
@@ -3893,9 +3937,12 @@ uplRenderRecent();
       name: it.name,
       sub: [it.last_purchase_unit, it.last_invoice_date ? ('last bought '+it.last_invoice_date) : null].filter(Boolean).join(' · ') || 'No invoice matched yet',
       unit: (it.base_unit || '').toLowerCase().replace('_',' ') || 'unit',
-      onHand: it.on_hand ?? 0,
-      par: it.par ?? 0,
-      price: it.last_unit_price ?? 0,
+      onHand: gNum(it.on_hand),
+      par: gNum(it.par),
+      price: gNum(it.last_unit_price),
+      // The server already decided this (on_hand < par, null when either is
+      // unknown). Carry its answer rather than recomputing a second opinion.
+      belowPar: it.below_par ?? null,
       vendor: it.vendor || 'Unknown',
       approved: it.approved,
       skipped: !!it.skipped,
@@ -3935,13 +3982,17 @@ uplRenderRecent();
   guideLoad().then(()=>{ if(typeof guideRender==='function') guideRender(); if(typeof alcRender==='function') alcRender(); });
 
   function guideStatus(it){
-    if(it.onHand <= 0) return 'flagged';          // critical / out
-    if(it.onHand < it.par) return 'in_progress';  // low
-    return 'complete';                             // ok
+    // Unknown first: without both a count and a par there is no answer to
+    // give, and guessing one is how 63 uncounted items read as "Below Par".
+    if(it.onHand == null || it.par == null) return 'unknown';
+    if(it.onHand <= 0) return 'flagged';                          // counted, none left
+    if(it.belowPar ?? (it.onHand < it.par)) return 'in_progress'; // server's call
+    return 'complete';
   }
   function guideStatusLabel(status){
-    if(status==='flagged') return 'Below Par';
-    if(status==='in_progress') return 'Low';
+    if(status==='unknown') return 'Not counted';
+    if(status==='flagged') return 'Out';
+    if(status==='in_progress') return 'Below Par';
     return 'Stocked';
   }
 
@@ -3969,16 +4020,22 @@ uplRenderRecent();
   window.guideSetOnHand = function(id, val){
     const it = guideItems.find(i=>i.id===id);
     if(!it) return;
-    const onHand = parseFloat(val)||0;
-    it.onHand = onHand; guideRender();
+    // Clearing the box means "I have not counted this", not "there are zero"
+    // -- send null so the distinction survives the round trip.
+    const onHand = gNum(val);
+    it.onHand = onHand;
+    it.belowPar = (onHand != null && it.par != null) ? (onHand < it.par) : null;
+    guideRender();
     guidePatch(id, { on_hand: onHand });
   };
 
   window.guideSetPar = function(id, val){
     const it = guideItems.find(i=>i.id===id);
     if(!it) return;
-    const par = parseFloat(val)||0;
-    it.par = par; guideRender();
+    const par = gNum(val);
+    it.par = par;
+    it.belowPar = (par != null && it.onHand != null) ? (it.onHand < par) : null;
+    guideRender();
     guidePatch(id, { par: par });
   };
 
@@ -4000,7 +4057,11 @@ uplRenderRecent();
     const lines = items.map(i=>{
       const auto = guideAutoPrice(i.name);
       const price = auto!=null ? auto : (i.actualPrice==null ? i.price : i.actualPrice);
-      return `${i.name}${i.sub?' ('+i.sub+')':''} — ${Math.max(0,(i.par||0)-(i.onHand||0))} ${i.unit} @ $${price.toFixed(2)}`;
+      // A vendor order has to carry a real quantity and a real price, or say
+      // neither -- "0 lb @ $0.00" is a worse thing to send than "qty TBC".
+      const qty = (i.par==null || i.onHand==null) ? null : Math.max(0, i.par - i.onHand);
+      return `${i.name}${i.sub?' ('+i.sub+')':''} — ${qty==null ? 'qty TBC' : qty+' '+i.unit}`
+           + (price==null ? '' : ` @ $${price.toFixed(2)}`);
     });
     const subject = `Order — ${vendorLabel} — ${new Date().toLocaleDateString()}`;
     const body = lines.join('\n');
@@ -4081,10 +4142,13 @@ uplRenderRecent();
     const vendorOf = i => (i.vendor||'').trim() || 'Unspecified';
     const visible = guideFilter==='all' ? active : active.filter(i=>vendorOf(i)===guideFilter);
 
-    // orderQty: how much is needed to hit par (never negative)
-    const orderQty = it => Math.max(0, (it.par||0) - (it.onHand||0));
+    // orderQty: how much is needed to hit par (never negative). Unknown par
+    // or unknown count means there is nothing to order *yet*, not zero.
+    const orderQty = it => (it.par==null || it.onHand==null) ? 0 : Math.max(0, it.par - it.onHand);
 
-    const critical    = active.filter(i=>(i.onHand||0)===0).length;
+    // "Critical" means counted and none left -- an item nobody has counted
+    // is not critical, it is unanswered.
+    const critical    = active.filter(i=>i.onHand===0).length;
     const stockVal    = active.reduce((s,i)=> s + (i.onHand||0) * (i.price||0), 0);
     const orderVal    = active.reduce((s,i)=> s + orderQty(i) * (i.price||0), 0);
     const approved    = active.filter(i=>i.approved===true);
@@ -4109,11 +4173,12 @@ uplRenderRecent();
       const status = guideStatus(i);
       const autoPrice = guideAutoPrice(i.name);
       const actual = autoPrice!=null ? autoPrice : (i.actualPrice==null ? i.price : i.actualPrice);
-      const priceUp = actual > i.price;
+      // Only call a price a rise when there is a real price on both sides.
+      const priceUp = actual != null && i.price != null && actual > i.price;
       const priceColor = priceUp?'color:var(--alert-danger,#c0392b);font-weight:400;':'color:var(--text-hero);';
       const priceCell = autoPrice!=null
         ? `<div style="${priceColor}">$${actual.toFixed(2)}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-faint);">🔄 auto (invoice sniffer)</div>`
-        : `<input type="number" min="0" step="0.01" value="${actual.toFixed(2)}" onchange="guideSetActualPrice('${i.id}',this.value)"
+        : `<input type="number" min="0" step="0.01" value="${actual==null?'':actual.toFixed(2)}" onchange="guideSetActualPrice('${i.id}',this.value)"
             style="width:72px;text-align:right;font-family:var(--font-mono);font-size:12px;padding:4px 6px;border:1px solid var(--border-subtle);border-radius:3px;background:var(--bg-recessed);${priceColor}">`;
       const rowStyle = i.approved===true ? 'background:var(--alert-success-wash);' : '';
       return `<tr style="${rowStyle}">
@@ -4122,11 +4187,11 @@ uplRenderRecent();
           <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);margin-top:2px;">${i.sub||''}</div>
         </td>
         <td>${i.vendor||'—'}</td>
-        <td class="text-right"><input type="number" min="0" step="1" value="${i.onHand}" onchange="guideSetOnHand('${i.id}',this.value)"
+        <td class="text-right"><input type="number" min="0" step="1" value="${i.onHand ?? ''}" placeholder="—" onchange="guideSetOnHand('${i.id}',this.value)"
             style="width:56px;text-align:right;font-family:var(--font-mono);font-size:12px;padding:4px 6px;border:1px solid var(--border-subtle);border-radius:3px;background:var(--bg-recessed);color:var(--text-hero);"> ${i.unit}</td>
-        <td class="text-right"><input type="number" min="0" step="1" value="${i.par}" onchange="guideSetPar('${i.id}',this.value)"
+        <td class="text-right"><input type="number" min="0" step="1" value="${i.par ?? ''}" placeholder="—" onchange="guideSetPar('${i.id}',this.value)"
             style="width:56px;text-align:right;font-family:var(--font-mono);font-size:12px;padding:4px 6px;border:1px solid var(--border-subtle);border-radius:3px;background:var(--bg-recessed);color:var(--text-hero);"> ${i.unit}</td>
-        <td class="text-right" style="font-weight:400;">${orderQty(i)} ${i.unit}</td>
+        <td class="text-right" style="font-weight:400;">${(i.par==null||i.onHand==null) ? '<span style="color:var(--text-faint);font-size:11px;">—</span>' : orderQty(i)+' '+i.unit}</td>
         <td class="text-right">${i._hasRealPrice ? '$'+i.price.toFixed(2) : '<span style="color:var(--text-faint);font-size:11px;">no invoice yet</span>'}</td>
         <td class="text-right">${priceCell}</td>
         <td><span class="status-badge ${status}">${guideStatusLabel(status)}</span></td>
@@ -4151,11 +4216,11 @@ uplRenderRecent();
           <span class="status-badge ${status}">${guideStatusLabel(status)}</span>
         </div>
         <div style="display:flex;gap:14px;margin-top:10px;font-family:var(--font-mono);font-size:11px;color:var(--text-muted);flex-wrap:wrap;">
-          <div>On Hand: ${i.onHand} ${i.unit}</div>
-          <div>Par: ${i.par} ${i.unit}</div>
-          <div style="font-weight:400;color:var(--text-hero);">Order: ${orderQty(i)} ${i.unit}</div>
-          <div>Guide: $${i.price.toFixed(2)}</div>
-          <div style="${(actual > i.price)?'color:var(--alert-danger,#c0392b);font-weight:400;':''}">Actual: $${actual.toFixed(2)}${autoPrice!=null?' 🔄':''}</div>
+          <div>On Hand: ${i.onHand==null ? 'not counted' : i.onHand+' '+i.unit}</div>
+          <div>Par: ${i.par==null ? 'not set' : i.par+' '+i.unit}</div>
+          <div style="font-weight:400;color:var(--text-hero);">Order: ${(i.par==null||i.onHand==null) ? '—' : orderQty(i)+' '+i.unit}</div>
+          <div>Guide: ${i.price==null ? 'no invoice yet' : '$'+i.price.toFixed(2)}</div>
+          <div style="${priceUp?'color:var(--alert-danger,#c0392b);font-weight:400;':''}">Actual: ${actual==null ? '—' : '$'+actual.toFixed(2)}${autoPrice!=null?' 🔄':''}</div>
         </div>
         <div style="display:flex;gap:8px;margin-top:10px;">
           <button class="btn-secondary" style="flex:1;padding:10px;font-size:12px;${i.approved===true?'opacity:1;':'opacity:.55;'}" onclick="guideApprove('${i.id}',true)">Add to Order</button>
@@ -4209,6 +4274,9 @@ uplRenderRecent();
   // pipeline -- this module never writes them, only displays them.
   // par_base_units / vendor / purchase_unit_label / purchase_unit_price
   // are the chef-editable ordering fields.
+  // Same rule as Order Food: a par nobody has set is not a par of zero.
+  const bNum = v => (v == null || v === '' || Number.isNaN(Number(v))) ? null : Number(v);
+
   function bevFromApiItem(it){
     return {
       id: it.id,
@@ -4216,9 +4284,10 @@ uplRenderRecent();
       name: it.name,
       sub: it.purchase_unit_label || '',
       unit: (it.base_unit || '').toLowerCase().replace('_',' ') || 'unit',
-      onHand: it.total_base_units_in_stock ?? 0,
-      par: it.par_base_units ?? 0,
-      price: it.purchase_unit_price ?? 0,
+      onHand: bNum(it.total_base_units_in_stock),
+      par: bNum(it.par_base_units),
+      price: bNum(it.purchase_unit_price),
+      belowPar: it.below_par ?? null,
       vendor: it.vendor || 'Unknown',
       approved: it.approved,
       skipped: !!it.skipped,
@@ -4259,13 +4328,15 @@ uplRenderRecent();
   bevLoad().then(()=>{ if(typeof bevRender==='function') bevRender(); if(typeof alcRender==='function') alcRender(); });
 
   function bevStatus(it){
-    if(it.onHand <= 0) return 'flagged';          // critical / out
-    if(it.onHand < it.par) return 'in_progress';  // low
-    return 'complete';                             // ok
+    if(it.onHand == null || it.par == null) return 'unknown';
+    if(it.onHand <= 0) return 'flagged';                          // counted, none left
+    if(it.belowPar ?? (it.onHand < it.par)) return 'in_progress'; // server's call
+    return 'complete';
   }
   function bevStatusLabel(status){
-    if(status==='flagged') return 'Below Par';
-    if(status==='in_progress') return 'Low';
+    if(status==='unknown') return 'No par set';
+    if(status==='flagged') return 'Out';
+    if(status==='in_progress') return 'Below Par';
     return 'Stocked';
   }
 
@@ -4287,7 +4358,7 @@ uplRenderRecent();
   window.bevSetActualPrice = function(id, val){
     const it = bevItems.find(i=>i.id===id);
     if(!it) return;
-    const price = parseFloat(val)||0;
+    const price = bNum(val);
     it.price = price; bevRender();
     bevPatch(id, { purchase_unit_price: price });
   };
@@ -4295,8 +4366,11 @@ uplRenderRecent();
   window.bevSetPar = function(id, val){
     const it = bevItems.find(i=>i.id===id);
     if(!it) return;
-    const par = parseFloat(val)||0;
-    it.par = par; bevRender();
+    // Clearing the box means "no par set", not "par of zero".
+    const par = bNum(val);
+    it.par = par;
+    it.belowPar = (par != null && it.onHand != null) ? (it.onHand < par) : null;
+    bevRender();
     bevPatch(id, { par_base_units: par });
   };
 
@@ -4318,7 +4392,11 @@ uplRenderRecent();
     const lines = items.map(i=>{
       const auto = bevAutoPrice(i.name);
       const price = auto!=null ? auto : (i.actualPrice==null ? i.price : i.actualPrice);
-      return `${i.name}${i.sub?' ('+i.sub+')':''} — ${Math.max(0,(i.par||0)-(i.onHand||0))} ${i.unit} @ $${price.toFixed(2)}`;
+      // A vendor order has to carry a real quantity and a real price, or say
+      // neither -- "0 lb @ $0.00" is a worse thing to send than "qty TBC".
+      const qty = (i.par==null || i.onHand==null) ? null : Math.max(0, i.par - i.onHand);
+      return `${i.name}${i.sub?' ('+i.sub+')':''} — ${qty==null ? 'qty TBC' : qty+' '+i.unit}`
+           + (price==null ? '' : ` @ $${price.toFixed(2)}`);
     });
     const subject = `Order — ${vendorLabel} — ${new Date().toLocaleDateString()}`;
     const body = lines.join('\n');
@@ -4401,7 +4479,8 @@ uplRenderRecent();
     const vendorOf = i => (i.vendor||'').trim() || 'Unspecified';
     const visible = bevFilter==='all' ? active : active.filter(i=>vendorOf(i)===bevFilter);
 
-    const orderQty = it => Math.max(0, (it.par||0) - (it.onHand||0));
+    // Unknown par or unknown stock means nothing to order yet, not zero.
+    const orderQty = it => (it.par==null || it.onHand==null) ? 0 : Math.max(0, it.par - it.onHand);
 
     const critical    = active.filter(i=>(i.onHand||0)===0).length;
     const stockVal    = active.reduce((s,i)=> s + (i.onHand||0) * (i.price||0), 0);
@@ -4428,11 +4507,11 @@ uplRenderRecent();
       const status = bevStatus(i);
       const autoPrice = bevAutoPrice(i.name);
       const actual = autoPrice!=null ? autoPrice : (i.actualPrice==null ? i.price : i.actualPrice);
-      const priceUp = actual > i.price;
+      const priceUp = actual != null && i.price != null && actual > i.price;
       const priceColor = priceUp?'color:var(--alert-danger,#c0392b);font-weight:400;':'color:var(--text-hero);';
       const priceCell = autoPrice!=null
         ? `<div style="${priceColor}">$${actual.toFixed(2)}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-faint);">🔄 auto (invoice sniffer)</div>`
-        : `<input type="number" min="0" step="0.01" value="${actual.toFixed(2)}" onchange="bevSetActualPrice('${i.id}',this.value)"
+        : `<input type="number" min="0" step="0.01" value="${actual==null?'':actual.toFixed(2)}" onchange="bevSetActualPrice('${i.id}',this.value)"
             style="width:72px;text-align:right;font-family:var(--font-mono);font-size:12px;padding:4px 6px;border:1px solid var(--border-subtle);border-radius:3px;background:var(--bg-recessed);${priceColor}">`;
       const rowStyle = i.approved===true ? 'background:var(--alert-success-wash);' : '';
       return `<tr style="${rowStyle}">
@@ -4441,10 +4520,10 @@ uplRenderRecent();
           <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);margin-top:2px;">${i.sub||''}</div>
         </td>
         <td>${i.vendor||'—'}</td>
-        <td class="text-right" title="Tracked automatically from invoices &amp; depletion — not editable here">${i.onHand} ${i.unit}</td>
-        <td class="text-right"><input type="number" min="0" step="1" value="${i.par}" onchange="bevSetPar('${i.id}',this.value)"
+        <td class="text-right" title="Tracked automatically from invoices &amp; depletion — not editable here">${i.onHand==null ? '<span style="color:var(--text-faint);font-size:11px;">—</span>' : i.onHand+' '+i.unit}</td>
+        <td class="text-right"><input type="number" min="0" step="1" value="${i.par ?? ''}" placeholder="—" onchange="bevSetPar('${i.id}',this.value)"
             style="width:56px;text-align:right;font-family:var(--font-mono);font-size:12px;padding:4px 6px;border:1px solid var(--border-subtle);border-radius:3px;background:var(--bg-recessed);color:var(--text-hero);"> ${i.unit}</td>
-        <td class="text-right" style="font-weight:400;">${orderQty(i)} ${i.unit}</td>
+        <td class="text-right" style="font-weight:400;">${(i.par==null||i.onHand==null) ? '<span style="color:var(--text-faint);font-size:11px;">—</span>' : orderQty(i)+' '+i.unit}</td>
         <td class="text-right">${i._hasRealCost ? '$'+i._realCostPerBaseUnit.toFixed(2) : '<span style="color:var(--text-faint);font-size:11px;">no invoice yet</span>'}</td>
         <td class="text-right">${priceCell}</td>
         <td><span class="status-badge ${status}">${bevStatusLabel(status)}</span></td>
@@ -4469,11 +4548,11 @@ uplRenderRecent();
           <span class="status-badge ${status}">${bevStatusLabel(status)}</span>
         </div>
         <div style="display:flex;gap:14px;margin-top:10px;font-family:var(--font-mono);font-size:11px;color:var(--text-muted);flex-wrap:wrap;">
-          <div title="Tracked automatically from invoices &amp; depletion">On Hand: ${i.onHand} ${i.unit}</div>
-          <div>Par: ${i.par} ${i.unit}</div>
-          <div style="font-weight:400;color:var(--text-hero);">Order: ${orderQty(i)} ${i.unit}</div>
+          <div title="Tracked automatically from invoices &amp; depletion">On Hand: ${i.onHand==null ? '—' : i.onHand+' '+i.unit}</div>
+          <div>Par: ${i.par==null ? 'not set' : i.par+' '+i.unit}</div>
+          <div style="font-weight:400;color:var(--text-hero);">Order: ${(i.par==null||i.onHand==null) ? '—' : orderQty(i)+' '+i.unit}</div>
           <div>${i._hasRealCost ? 'Unit Cost: $'+i._realCostPerBaseUnit.toFixed(2) : 'Unit Cost: no invoice yet'}</div>
-          <div style="${(actual > i.price)?'color:var(--alert-danger,#c0392b);font-weight:400;':''}">Order Price: $${actual.toFixed(2)}${autoPrice!=null?' 🔄':''}</div>
+          <div style="${priceUp?'color:var(--alert-danger,#c0392b);font-weight:400;':''}">Order Price: ${actual==null ? '—' : '$'+actual.toFixed(2)}${autoPrice!=null?' 🔄':''}</div>
         </div>
         <div style="display:flex;gap:8px;margin-top:10px;">
           <button class="btn-secondary" style="flex:1;padding:10px;font-size:12px;${i.approved===true?'opacity:1;':'opacity:.55;'}" onclick="bevApprove('${i.id}',true)">Add to Order</button>

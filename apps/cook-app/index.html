@@ -470,14 +470,20 @@ function renderYieldEntries(){
           </div>`;
         }
         // entry_type === 'portions'
-        const variance = e.expected_portions - e.actual_portions;
-        const dollarLost = e.dollarLost ?? null;
-        const color = variance > 0 ? 'var(--alert-danger)' : 'var(--alert-success)';
-        const label = variance > 0 ? `${variance.toFixed(variance%1===0?0:1)} short` : variance < 0 ? `${Math.abs(variance).toFixed(Math.abs(variance)%1===0?0:1)} over` : 'On target';
+        // Either side missing means there is no variance to state -- null
+        // minus a number is that number in JS, which would invent a shortfall.
+        const known = e.expected_portions != null && e.actual_portions != null;
+        const variance = known ? (e.expected_portions - e.actual_portions) : null;
+        const color = variance == null ? 'var(--text-faint)' : variance > 0 ? 'var(--alert-danger)' : 'var(--alert-success)';
+        const label = variance == null
+          ? (lang==='es' ? 'registro incompleto' : 'incomplete entry')
+          : variance > 0 ? `${variance.toFixed(variance%1===0?0:1)} short`
+          : variance < 0 ? `${Math.abs(variance).toFixed(Math.abs(variance)%1===0?0:1)} over`
+          : 'On target';
         return `
         <div style="display:flex;justify-content:space-between;align-items:center;background:var(--bg-card);border-radius:8px;padding:10px 14px;font-size:14px;">
           <div>
-            <span style="color:${color};font-weight:700;">${e.actual_portions}/${e.expected_portions} portions — ${label}</span>
+            <span style="color:${color};font-weight:700;">${known ? `${e.actual_portions}/${e.expected_portions} portions — ` : ''}${label}</span>
           </div>
           <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);">${fmtTime(e.logged_at)}</span>
         </div>`
