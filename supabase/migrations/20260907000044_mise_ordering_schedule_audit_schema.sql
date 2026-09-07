@@ -1,0 +1,105 @@
+-- ═══════════════════════════════════════════════════════════════════════
+-- Mise.AI — close the RLS gap + add tables for Order Food, Order Beverage,
+-- Schedule, and Monthly Audit. All new tables get RLS enabled with NO
+-- anon/authenticated policies: access is only through edge functions using
+-- the service_role key, which check clients.api_token first. This is a
+-- deliberate step up from the anon-trusts-everything pattern used by the
+-- earlier invoices/ingredients tables (that gap is already logged in
+-- locker_findings as open, not being widened further here).
+-- ═══════════════════════════════════════════════════════════════════════
+
+-- 1. Close the flagged RLS gap. No policies added on purpose: nothing in the
+--    app should ever read these directly. All access goes through the new
+--    product-mix edge function (service_role) and ingest-nightly-report
+--    (already service_role).
+ALTER TABLE public.nightly_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.nightly_product_mix ENABLE ROW LEVEL SECURITY;
+
+-- 2. Order Food — replaces the app's hardcoded 44-item JS demo array.
+--    One row per item a restaurant actually stocks; on_hand is entered by
+--    the chef (nobody has automated physical counts), everything else can
+--    be pre-filled from real vendor/price data once an item is linked to
+--    an ingredient.
+CREATE TABLE public.order_guide_items (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id         uuid NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
+  category          text NOT NULL,
+  name              text NOT NULL,
+  sub_description   text,
+  unit              text,
+  on_hand           numeric NOT NULL DEFAULT 0,
+  par               numeric NOT NULL DEFAULT 0,
+  unit_price        numeric,
+  vendor            text,
+  ingredient_id     uuid REFERENCES public.ingredients(id),
+  approved          boolean,
+  skipped           boolean NOT NULL DEFAULT false,
+  sort_order        smallint,
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  updated_at        timestamptz NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE public.order_guide_items IS
+  'Order Food tab. Replaces the old hardcoded JS demo list + localStorage. on_hand is a human count entered in the app; par/vendor/unit_price can be seeded or refreshed from ingredients once ingredient_id is linked. No anon access -- read/write only via the order-guide edge function.';
+ALTER TABLE public.order_guide_items ENABLE ROW LEVEL SECURITY;
+
+CREATE INDEX order_guide_items_client_idx ON public.order_guide_items(client_id);
+
+-- 3. Order Beverage — extend the REAL costed beverage_items table with the
+--    ordering-facing fields the app's UI needs, instead of building a
+--    parallel demo-shaped table. beverage_items already carries real
+--    invoice-linked cost data for 5 items; this makes it usable by the
+--    ordering UI too.
+ALTER TABLE public.beverage_items
+  ADD COLUMN vendor               text,
+  ADD COLUMN par_base_units       numeric,
+  ADD COLUMN purchase_unit_label  text,
+  ADD COLUMN purchase_unit_price  numeric,
+  ADD COLUMN approved             boolean,
+  ADD COLUMN skipped              boolean NOT NULL DEFAULT false;
+COMMENT ON COLUMN public.beverage_items.par_base_units IS 'Par level in the same base_unit as total_base_units_in_stock, so Order Beverage and the costing/depletion pipeline never disagree on units.';
+
+-- 4. Schedule — new subsystem, did not exist before.
+CREATE TABLE public.staff (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id     uuid NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
+  name          text NOT NULL,
+  role          text,
+  hourly_rate   numeric,
+  active        boolean NOT NULL DEFAULT true,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE public.staff IS 'One row per staff member, per restaurant. Feeds the Schedule tab and (via shifts) labor cost vs budget.';
+ALTER TABLE public.staff ENABLE ROW LEVEL SECURITY;
+CREATE INDEX staff_client_idx ON public.staff(client_id);
+
+CREATE TABLE public.shifts (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id     uuid NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
+  staff_id      uuid NOT NULL REFERENCES public.staff(id) ON DELETE CASCADE,
+  week_of       date NOT NULL,
+  shift_date    date NOT NULL,
+  start_time    time,
+  end_time      time,
+  role          text,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (staff_id, shift_date, start_time)
+);
+COMMENT ON TABLE public.shifts IS 'One row per scheduled shift. week_of is the Monday of the week the app is editing, kept even though shift_date alone would derive it, so a whole week can be fetched in one query.';
+ALTER TABLE public.shifts ENABLE ROW LEVEL SECURITY;
+CREATE INDEX shifts_client_week_idx ON public.shifts(client_id, week_of);
+
+-- 5. Monthly Audit — new subsystem, did not exist before. Narrative is
+--    generated by Gemini (already the model used for invoice reading in
+--    this project -- no new API key needed) from real Postgres data.
+CREATE TABLE public.monthly_audits (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id     uuid NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
+  period        date NOT NULL,
+  narrative     text,
+  highlights    jsonb,
+  model_used    text,
+  generated_at  timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (client_id, period)
+);
+COMMENT ON TABLE public.monthly_audits IS 'One row per restaurant per calendar month (period = first day of month). Stores the generated narrative so audits are comparable month over month without re-calling the model.';
+ALTER TABLE public.monthly_audits ENABLE ROW LEVEL SECURITY;

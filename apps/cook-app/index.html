@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Cook App — On The Line</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;0,900;1,400&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg-app:#0A0A0C;
+  --bg-card:#141416;
+  --bg-recessed:#060608;
+  --text-hero:#FFFFFF;
+  --text-muted:#F0F4F8;
+  --text-faint:#A8AEB8;
+  --brand-accent:#FDE047;
+  --alert-danger:#FF6B6B;
+  --alert-success:#CCFBF1;
+  --border-subtle:rgba(240,244,248,0.20);
+  --font-serif:'Fraunces',Georgia,serif;
+  --font-display:'Fraunces',Georgia,serif;
+  --font-mono:'Fraunces',Georgia,serif;
+}
+body{font-family:var(--font-serif);background:var(--bg-app);color:var(--text-hero);min-height:100vh;font-size:14px;line-height:1.6;}
+input,select,textarea,button{font-family:inherit;}
+.header{background:var(--bg-card);border-bottom:1px solid var(--border-subtle);padding:16px 20px;position:sticky;top:0;z-index:100;}
+.header-title{font-family:var(--font-display);font-size:26px;font-weight:900;color:var(--text-hero);}
+.header-sub{font-family:var(--font-mono);font-size:12px;color:var(--text-faint);letter-spacing:.08em;text-transform:uppercase;margin-top:4px;}
+.wrap{max-width:760px;margin:0 auto;padding:20px 16px 60px;}
+.picker{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;}
+.picker button{font-family:var(--font-mono);font-size:12px;text-transform:uppercase;letter-spacing:.06em;padding:10px 16px;border-radius:8px;border:1px solid var(--border-subtle);background:var(--bg-card);color:var(--text-muted);cursor:pointer;}
+.picker button.active{background:var(--brand-accent);color:var(--bg-card);border-color:var(--brand-accent);font-weight:700;}
+.card{background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:12px;padding:24px;margin-bottom:20px;}
+.recipe-name{font-family:var(--font-display);font-size:32px;font-weight:900;color:var(--brand-accent);margin-bottom:6px;}
+.recipe-meta{font-family:var(--font-mono);font-size:13px;color:var(--text-faint);margin-bottom:20px;}
+.recipe-meta strong{color:var(--text-hero);}
+.section-title{font-family:var(--font-display);font-size:19px;font-weight:700;color:var(--text-hero);margin:20px 0 10px;border-bottom:2px solid var(--brand-accent);padding-bottom:6px;}
+table{width:100%;border-collapse:collapse;font-size:14px;}
+th{text-align:left;font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-faint);padding:8px 6px;border-bottom:1px solid var(--border-subtle);}
+td{padding:10px 6px;border-bottom:1px solid rgba(240,244,248,0.08);font-size:14px;}
+.tr{text-align:right;}
+.steps{padding-left:22px;}
+.steps li{font-size:14px;margin-bottom:12px;}
+.steps li::marker{color:var(--brand-accent);font-weight:700;}
+.btn{font-family:var(--font-mono);font-size:13px;text-transform:uppercase;letter-spacing:.06em;padding:13px 20px;border-radius:8px;border:none;cursor:pointer;font-weight:700;}
+.btn-primary{background:var(--brand-accent);color:var(--bg-card);width:100%;margin-top:16px;}
+.btn-primary:active{transform:scale(0.98);}
+.log-list{margin-top:16px;display:flex;flex-direction:column;gap:8px;}
+.log-item{background:var(--bg-recessed);border:1px solid var(--border-subtle);border-radius:8px;padding:12px 14px;font-size:13px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.log-item .cat{font-weight:700;}
+.log-item .time{font-family:var(--font-mono);font-size:11px;color:var(--text-faint);}
+.empty{text-align:center;color:var(--text-faint);padding:30px 10px;font-size:14px;}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--brand-accent);color:var(--bg-card);padding:12px 22px;border-radius:8px;font-weight:700;font-size:13px;opacity:0;pointer-events:none;transition:all .25s;z-index:999;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.shared-note{font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-align:center;margin-top:6px;}
+</style>
+</head>
+<body>
+<div class="header">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+    <div>
+      <div class="header-title">Cook App</div>
+      <div class="header-sub" id="headerSub">Today's Recipe &amp; Yield Log</div>
+    </div>
+    <button id="langToggle" style="font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:.06em;padding:8px 14px;border-radius:8px;border:1px solid var(--border-subtle);background:var(--bg-recessed);color:var(--text-muted);cursor:pointer;white-space:nowrap;">EN</button>
+  </div>
+</div>
+<div class="wrap">
+  <div id="loadError" class="empty" style="display:none;color:var(--alert-danger);"></div>
+  <div class="picker" id="recipePicker"></div>
+  <div id="recipeArea"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ═════ SUPABASE (wired 2026-09-07) ═════
+// Real Mise.Ai-0000 project -- the SAME restaurant/prep tables the Chef
+// App's Order Food/Prep backend uses. This app reads/writes prep_items,
+// prep_recipes, prep_day and prep_yield_log through prep-sync-v2, which
+// also carries the i18n (Spanish) content already on file for the two
+// written-up recipes. There is no more window.storage or fallback demo
+// data -- what's on screen is always what's really in Postgres.
+const MISE_FUNCTIONS_BASE = 'https://qhfmywontdwwfapowqpo.supabase.co/functions/v1';
+const MISE_RESTAURANT_ID  = '7d1f0a2e-6c44-4b9a-9f31-2ab8e5c07d10';
+const MISE_API_TOKEN      = '8201aeb2-b1ac-4709-aa95-dcb9370fae2d';
+function miseAuthQS(extra){
+  const p = new URLSearchParams({ restaurant_id: MISE_RESTAURANT_ID, api_token: MISE_API_TOKEN, ...(extra||{}) });
+  return p.toString();
+}
+function miseAuthBody(extra){ return { restaurant_id: MISE_RESTAURANT_ID, api_token: MISE_API_TOKEN, ...(extra||{}) }; }
+
+// ═════ Language (EN/ES) ═════
+// prep_items/prep_recipes both carry an i18n.es block already filled in
+// for this client's two written-up recipes (station/unit labels come from
+// the global prep_stations/prep_units lookups, which carry i18n too).
+let lang = (localStorage.getItem('cookAppLang') || 'en');
+function t(field, obj, fallback){
+  if(lang==='es' && obj && obj.i18n && obj.i18n.es && obj.i18n.es[field] != null) return obj.i18n.es[field];
+  return fallback;
+}
+function setLang(next){
+  lang = next;
+  try{ localStorage.setItem('cookAppLang', lang); }catch(e){}
+  document.getElementById('langToggle').textContent = lang==='es' ? 'ES' : 'EN';
+  document.getElementById('headerSub').textContent = lang==='es' ? "Receta y Registro de Rendimiento de Hoy" : "Today's Recipe & Yield Log";
+  renderPicker();
+  renderRecipe();
+}
+
+// ═════ State (all real, loaded from Supabase) ═════
+let stations = [];    // global lookup: {code,label,sort_order,i18n}
+let units = [];       // global lookup: {code,label,i18n}
+let prepItems = [];   // this client's items, each with .recipe (or null) and .today (prep_day row, or null)
+let yieldLogAll = []; // last N days of this client's prep_yield_log rows
+let activeItemId = null;
+let scaleFactor = 1;
+let loadErrorMsg = null;
+
+function esc(s){
+  const d=document.createElement('div');
+  d.textContent=s==null?'':s;
+  return d.innerHTML;
+}
+
+function showToast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(()=>el.classList.remove('show'), 2200);
+}
+
+function unitLabel(code){
+  const u = units.find(x=>x.code===code);
+  if(!u) return code || '';
+  return t('label', u, u.label) || code;
+}
+function stationLabel(code){
+  const s = stations.find(x=>x.code===code);
+  if(!s) return code || '';
+  return t('label', s, s.label) || code;
+}
+
+// ═════ Load everything from prep-sync-v2 ═════
+async function loadPrepData(){
+  const errEl = document.getElementById('loadError');
+  try{
+    const res = await fetch(`${MISE_FUNCTIONS_BASE}/prep-sync-v2?${miseAuthQS({yield_days:14})}`);
+    const data = await res.json();
+    if(!res.ok || !data.success) throw new Error(data.error || ('HTTP '+res.status));
+    stations = data.stations || [];
+    units = data.units || [];
+    prepItems = (data.items || []).filter(it => it.is_active !== false);
+    yieldLogAll = data.yield_log || [];
+    loadErrorMsg = null;
+    if(!activeItemId || !prepItems.some(i=>i.id===activeItemId)){
+      // Prefer an item that has a written recipe, so the app opens on
+      // something with real steps rather than a bare prep-list entry.
+      const withRecipe = prepItems.find(i=>i.recipe);
+      activeItemId = (withRecipe || prepItems[0] || {}).id || null;
+    }
+  }catch(e){
+    console.warn('prep-sync-v2 load failed', e);
+    loadErrorMsg = e.message;
+  }
+  if(errEl){
+    errEl.style.display = loadErrorMsg ? 'block' : 'none';
+    errEl.textContent = loadErrorMsg ? ('Could not load from Supabase: ' + loadErrorMsg) : '';
+  }
+}
+
+function activeItem(){ return prepItems.find(i=>i.id===activeItemId) || null; }
+
+function renderPicker(){
+  const picker = document.getElementById('recipePicker');
+  picker.innerHTML = prepItems.map(it =>
+    `<button class="${it.id===activeItemId?'active':''}" data-id="${esc(it.id)}">${esc(t('name', it, it.name))}</button>`
+  ).join('');
+
+  picker.querySelectorAll('button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      activeItemId = btn.dataset.id;
+      scaleFactor = 1;
+      renderPicker();
+      renderRecipe();
+    });
+  });
+}
+
+// Renders everything EXCEPT the yield log body (that has its own container
+// which is only touched by yield-log functions, so typing/logging there
+// never triggers a full-card rebuild).
+function renderRecipe(){
+  const it = activeItem();
+  const area = document.getElementById('recipeArea');
+  if(!it){
+    area.innerHTML = `<div class="card empty">${lang==='es' ? 'No hay receta seleccionada.' : 'No recipe selected.'}</div>`;
+    return;
+  }
+  const r = it.recipe; // may be null -- a prep item with no written-up recipe card yet
+
+  if(!r){
+    // No recipe on file -- still a real prep item (par/unit/station are real),
+    // just nothing to cook from. Never invent steps or ingredients for it.
+    area.innerHTML = `
+      <div class="card">
+        <div class="recipe-name">${esc(t('name', it, it.name))}</div>
+        <div class="recipe-meta">${lang==='es' ? 'Estación' : 'Station'}: <strong>${esc(stationLabel(it.station))}</strong> &nbsp;·&nbsp; ${lang==='es' ? 'Nivel mínimo' : 'Par'}: <strong>${it.par ?? '—'} ${esc(unitLabel(it.unit))}</strong></div>
+        <div class="empty" style="padding:20px 4px;">${lang==='es' ? 'Todavía no hay una receta detallada para este artículo.' : 'No written-up recipe for this item yet.'}</div>
+      </div>`;
+    return;
+  }
+
+  // is_butchery is a real column: true for a breakdown item with no fixed
+  // batch (weigh-in/weigh-out), false for a fixed-recipe batch (portion
+  // target). basePortions is only meaningful for the latter.
+  const butchery = !!r.is_butchery;
+  const portionsMatch = (r.batch_yield||'').match(/(\d+)\s*portions?/i);
+  const basePortions = (!butchery && portionsMatch) ? Number(portionsMatch[1]) : null;
+  const totalPortions = basePortions ? basePortions * scaleFactor : null;
+
+  const portionOzMatch = (r.batch_yield||'').match(/(\d+(?:\.\d+)?)\s*oz/i);
+  const portionSizeOz = portionOzMatch ? Number(portionOzMatch[1]) : null;
+
+  let displayYield = t('batch_yield', r, r.batch_yield);
+  if (totalPortions != null && portionSizeOz != null) {
+    displayYield = lang==='es'
+      ? `${totalPortions} porciones (${portionSizeOz} oz cada una)`
+      : `${totalPortions} portions (${portionSizeOz} oz each)`;
+  } else if (totalPortions != null && basePortions != null) {
+    displayYield = displayYield.replace(String(basePortions), String(totalPortions));
+  }
+
+  const rawIngredients = r.ingredients || [];
+  const esIngredientNames = (r.i18n && r.i18n.es && r.i18n.es.ingredients) || [];
+  const calc = rawIngredients.map((ing, idx) => {
+    const apWeight   = (ing.apWeight||0) * scaleFactor;
+    const epWeight   = (ing.qty||0) * scaleFactor;
+    const hasWeight  = (ing.apWeight||0) > 0;
+    const yieldPct   = hasWeight ? (ing.qty / ing.apWeight) * 100 : null;
+    const wastePct   = hasWeight ? 100 - yieldPct : null;
+    const epCostUnit = hasWeight && yieldPct ? ing.costPerUnit / (yieldPct / 100) : ing.costPerUnit;
+    const lineCost   = hasWeight ? epCostUnit * epWeight : 0;
+    const displayName = (lang==='es' && esIngredientNames[idx] && esIngredientNames[idx].name) || ing.name;
+    return { ...ing, displayName, apWeight, epWeight, hasWeight, yieldPct, wastePct, epCostUnit, lineCost };
+  });
+
+  const totalCost = calc.reduce((s,i)=>s+i.lineCost,0);
+  const costPerPortion = (totalPortions && totalCost>0) ? totalCost / totalPortions : null;
+
+  const noWeightLabel = lang==='es' ? 'Registre el peso real ↓' : 'Log actual weight ↓';
+  const ingredientRows = calc.map(ing => `
+    <tr>
+      <td>${esc(ing.displayName)}</td>
+      <td class="tr">${ing.hasWeight ? `${ing.apWeight % 1 === 0 ? ing.apWeight : ing.apWeight.toFixed(2)} ${esc(unitLabel(ing.unit))}` : '—'}</td>
+      <td class="tr">${ing.hasWeight ? `${ing.epWeight % 1 === 0 ? ing.epWeight : ing.epWeight.toFixed(2)} ${esc(unitLabel(ing.unit))}` : '—'}</td>
+      <td class="tr">${ing.hasWeight ? `${ing.yieldPct.toFixed(0)}%` : '—'}</td>
+      <td class="tr">${ing.hasWeight ? `${ing.wastePct.toFixed(0)}%` : '—'}</td>
+      <td class="tr">${ing.hasWeight ? `$${ing.epCostUnit.toFixed(2)}` : '—'}</td>
+      <td class="tr" style="font-weight:700;">${ing.hasWeight ? `$${ing.lineCost.toFixed(2)}` : noWeightLabel}</td>
+    </tr>`).join('');
+
+  const rawSteps = r.steps || [];
+  const esSteps = (r.i18n && r.i18n.es && r.i18n.es.steps) || [];
+  const stepItems = rawSteps.map((s,idx)=>`<li>${esc((lang==='es' && esSteps[idx]) || s)}</li>`).join('');
+
+  const L = lang==='es' ? {
+    batchYield:'Rendimiento del Lote', shelfLife:'Vida Útil', batchSize:'Tamaño del Lote',
+    ingredientsTitle:'Ingredientes — Costo Real Después del Recorte', ingredient:'Ingrediente',
+    apWeight:'Peso AP', epWeight:'Peso PL', yieldPct:'% Rendimiento', wastePct:'% Merma',
+    epCost:'Costo PL/Unidad', lineCost:'Costo de Línea', totalBatchCost:'Costo Total del Lote',
+    costPerPortion:'Costo/Porción', method:'Método', portionsTarget:'porciones meta',
+  } : {
+    batchYield:'Batch Yield', shelfLife:'Shelf Life', batchSize:'Batch Size',
+    ingredientsTitle:'Ingredients — True Cost After Trim', ingredient:'Ingredient',
+    apWeight:'AP Weight', epWeight:'EP Weight', yieldPct:'Yield %', wastePct:'Waste %',
+    epCost:'EP Cost/Unit', lineCost:'Line Cost', totalBatchCost:'Total Batch Cost',
+    costPerPortion:'Cost / Portion', method:'Method', portionsTarget:'portions target',
+  };
+
+  area.innerHTML = `
+    <div class="card">
+      <div class="recipe-name">${esc(t('name', r, r.name))}</div>
+      <div class="recipe-meta">${L.batchYield}: <strong>${esc(displayYield)}</strong> &nbsp;·&nbsp; ${L.shelfLife}: <strong>${esc(t('shelf_life', r, r.shelf_life))}</strong></div>
+
+      ${!butchery ? `
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:20px;background:var(--bg-recessed);border:1px solid var(--border-subtle);border-radius:10px;padding:12px 16px;">
+        <span style="font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-faint);">${L.batchSize}</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;flex:1;">
+          ${[0.25,0.5,0.75,1,1.25,1.5,1.75,2].map(s=>`
+            <button data-scale="${s}" style="padding:6px 10px;border-radius:6px;border:1px solid ${scaleFactor===s?'var(--brand-accent)':'var(--border-subtle)'};background:${scaleFactor===s?'var(--brand-accent)':'var(--bg-card)'};color:${scaleFactor===s?'var(--bg-card)':'var(--text-muted)'};font-family:var(--font-mono);font-size:12px;font-weight:700;cursor:pointer;">${Math.round(s*100)}%</button>
+          `).join('')}
+        </div>
+        <span style="font-family:var(--font-mono);font-size:12px;color:var(--brand-accent);font-weight:700;">${totalPortions!=null?`${totalPortions % 1===0?totalPortions:totalPortions.toFixed(1)} ${L.portionsTarget}`:''}</span>
+      </div>
+
+      <div class="section-title">${L.ingredientsTitle}</div>
+      <table>
+        <thead><tr><th>${L.ingredient}</th><th class="tr">${L.apWeight}</th><th class="tr">${L.epWeight}</th><th class="tr">${L.yieldPct}</th><th class="tr">${L.wastePct}</th><th class="tr">${L.epCost}</th><th class="tr">${L.lineCost}</th></tr></thead>
+        <tbody>${ingredientRows}</tbody>
+      </table>
+      <div style="text-align:right;margin-top:10px;font-weight:700;color:var(--brand-accent);">
+        ${L.totalBatchCost}: $${totalCost.toFixed(2)}${costPerPortion!=null?` &nbsp;·&nbsp; ${L.costPerPortion}: $${costPerPortion.toFixed(2)}`:''}
+      </div>
+      ` : ''}
+
+      <div class="section-title">${L.method}</div>
+      <ol class="steps">${stepItems}</ol>
+      <div style="height:1px;background:var(--border-subtle);margin:24px 0 16px;"></div>
+
+      <div style="background:var(--bg-recessed);border:1px solid var(--brand-accent);border-radius:12px;padding:18px;margin-bottom:16px;">
+        <div class="section-title" style="border:none; margin:0 0 4px; padding:0;">${lang==='es'?'Registro de Rendimiento':'Yield Log'}</div>
+        <div id="yieldLogBody"></div>
+      </div>
+    </div>
+  `;
+
+  // Yield log body IS rebuilt on every render, including scale changes,
+  // so the "Expected Yield" target always matches the current batch size.
+  renderYieldLogBody(it, r, butchery, costPerPortion, totalPortions);
+
+  area.querySelectorAll('[data-scale]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      scaleFactor = parseFloat(btn.dataset.scale);
+      renderRecipe();
+    });
+  });
+}
+
+// ═════ Yield log ═════
+function renderYieldLogBody(it, r, butchery, costPerPortion, targetYield){
+  const body = document.getElementById('yieldLogBody');
+  if(!body) return;
+
+  if(butchery){
+    body.innerHTML = lang==='es' ? `
+      <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);margin-bottom:16px;">Sin meta. Registre lo que llegó ahora — termine el peso final cuando realmente esté listo. Nada aquí se reinicia ni expira.</div>
+      <div style="display:flex;gap:10px;margin-bottom:10px;">
+        <div style="flex:1;">
+          <label style="display:block;font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-transform:uppercase;margin-bottom:4px;">Peso Real Recibido (lb)</label>
+          <input type="number" id="yieldWeightIn" min="0" step="any" placeholder="0" style="width:100%;padding:10px 12px;border-radius:6px;border:1px solid var(--border-subtle);background:var(--bg-card);color:var(--text-hero);font-size:20px;">
+        </div>
+        <div style="flex:1;">
+          <label style="display:block;font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-transform:uppercase;margin-bottom:4px;">Costo Pagado ($/lb, crudo)</label>
+          <input type="number" id="yieldCostPerLb" min="0" step="any" placeholder="0.00" style="width:100%;padding:10px 12px;border-radius:6px;border:1px solid var(--border-subtle);background:var(--bg-card);color:var(--text-hero);font-size:20px;">
+        </div>
+      </div>
+      <button id="logWeightInBtn" class="btn btn-primary" style="margin-top:0;">Registrar Peso Inicial</button>
+      <div id="yieldResult" style="font-family:var(--font-mono);font-size:13px;color:var(--text-faint);min-height:20px;"></div>
+      <div id="yieldEntries"></div>
+    ` : `
+      <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);margin-bottom:16px;">No target. Log what came in now — finish the weigh-out whenever it's actually done. Nothing here resets or times out.</div>
+      <div style="display:flex;gap:10px;margin-bottom:10px;">
+        <div style="flex:1;">
+          <label style="display:block;font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-transform:uppercase;margin-bottom:4px;">Actual Weight Received (lb)</label>
+          <input type="number" id="yieldWeightIn" min="0" step="any" placeholder="0" style="width:100%;padding:10px 12px;border-radius:6px;border:1px solid var(--border-subtle);background:var(--bg-card);color:var(--text-hero);font-size:20px;">
+        </div>
+        <div style="flex:1;">
+          <label style="display:block;font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-transform:uppercase;margin-bottom:4px;">Cost Paid ($/lb, raw)</label>
+          <input type="number" id="yieldCostPerLb" min="0" step="any" placeholder="0.00" style="width:100%;padding:10px 12px;border-radius:6px;border:1px solid var(--border-subtle);background:var(--bg-card);color:var(--text-hero);font-size:20px;">
+        </div>
+      </div>
+      <button id="logWeightInBtn" class="btn btn-primary" style="margin-top:0;">Log Weight In</button>
+      <div id="yieldResult" style="font-family:var(--font-mono);font-size:13px;color:var(--text-faint);min-height:20px;"></div>
+      <div id="yieldEntries"></div>
+    `;
+    setupButcheryYieldLog(it);
+  } else {
+    body.innerHTML = lang==='es' ? `
+      <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);margin-bottom:16px;">Registre esto una vez, justo cuando el lote sale de la línea y entra al refrigerador.</div>
+      <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-transform:uppercase;margin-bottom:10px;">
+        Rendimiento Esperado (Meta del Chef): <strong id="expectedYieldLabel" style="color:var(--brand-accent);">—</strong>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-transform:uppercase;margin-bottom:4px;">Porciones Reales Empacadas</label>
+        <input type="number" id="yieldActualPortions" min="0" step="1" placeholder="0" style="width:100%;padding:10px 12px;border-radius:6px;border:1px solid var(--border-subtle);background:var(--bg-card);color:var(--text-hero);font-size:20px;">
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:14px;">
+        <div style="flex:1;background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:8px;padding:12px 14px;">
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-transform:uppercase;margin-bottom:4px;">Variación</div>
+          <div id="yieldVarianceBox" style="font-size:22px;font-weight:900;color:var(--alert-danger);">—</div>
+        </div>
+        <div style="flex:1;background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:8px;padding:12px 14px;">
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-transform:uppercase;margin-bottom:4px;">% Variación</div>
+          <div id="yieldVariancePctBox" style="font-size:22px;font-weight:900;color:var(--alert-danger);">—</div>
+        </div>
+        <div style="flex:1;background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:8px;padding:12px 14px;">
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-transform:uppercase;margin-bottom:4px;">Costo de la Variación</div>
+          <div id="yieldCostBox" style="font-size:22px;font-weight:900;color:var(--alert-danger);">—</div>
+        </div>
+      </div>
+      <button id="logPortionsBtn" class="btn btn-primary" style="margin-top:0;">Registrar Rendimiento</button>
+      <div id="yieldResult" style="font-family:var(--font-mono);font-size:13px;color:var(--text-faint);min-height:20px;"></div>
+      <div id="yieldEntries"></div>
+    ` : `
+      <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);margin-bottom:16px;">Log this once, right when the batch comes off the line and goes into the walk-in.</div>
+      <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-transform:uppercase;margin-bottom:10px;">
+        Expected Yield (Chef's Target): <strong id="expectedYieldLabel" style="color:var(--brand-accent);">—</strong>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-transform:uppercase;margin-bottom:4px;">Actual Portions Packed</label>
+        <input type="number" id="yieldActualPortions" min="0" step="1" placeholder="0" style="width:100%;padding:10px 12px;border-radius:6px;border:1px solid var(--border-subtle);background:var(--bg-card);color:var(--text-hero);font-size:20px;">
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:14px;">
+        <div style="flex:1;background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:8px;padding:12px 14px;">
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-transform:uppercase;margin-bottom:4px;">Variance</div>
+          <div id="yieldVarianceBox" style="font-size:22px;font-weight:900;color:var(--alert-danger);">—</div>
+        </div>
+        <div style="flex:1;background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:8px;padding:12px 14px;">
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-transform:uppercase;margin-bottom:4px;">Variance %</div>
+          <div id="yieldVariancePctBox" style="font-size:22px;font-weight:900;color:var(--alert-danger);">—</div>
+        </div>
+        <div style="flex:1;background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:8px;padding:12px 14px;">
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-transform:uppercase;margin-bottom:4px;">Cost of Variance</div>
+          <div id="yieldCostBox" style="font-size:22px;font-weight:900;color:var(--alert-danger);">—</div>
+        </div>
+      </div>
+      <button id="logPortionsBtn" class="btn btn-primary" style="margin-top:0;">Log Yield</button>
+      <div id="yieldResult" style="font-family:var(--font-mono);font-size:13px;color:var(--text-faint);min-height:20px;"></div>
+      <div id="yieldEntries"></div>
+    `;
+    setupPortionYieldLog(it, costPerPortion, targetYield);
+  }
+
+  renderYieldEntries();
+}
+
+function renderYieldEntries(){
+  const el = document.getElementById('yieldEntries');
+  if(!el) return;
+  const it = activeItem();
+  if(!it){ el.innerHTML=''; return; }
+  // "pending" weight-in entries whose related finish hasn't happened yet
+  // are shown once; a "closed" pending entry (already finished) is hidden
+  // since its finish row (status 'finished') already tells the story.
+  const mine = yieldLogAll.filter(e=>e.prep_item_id===it.id && e.status!=='closed');
+  if(!mine.length){ el.innerHTML=''; return; }
+
+  const totalCost = mine.reduce((s,e)=>s+(e.entry_type==='weight' ? 0 : (e.dollarLost>0?e.dollarLost:0)),0);
+
+  const fmtTime = iso => new Date(iso).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true});
+
+  el.innerHTML = `
+    <div style="margin-top:14px;border-top:1px solid var(--border-subtle);padding-top:12px;display:flex;flex-direction:column;gap:8px;">
+      ${mine.map((e)=>{
+        if(e.entry_type === 'weight' && e.status === 'pending'){
+          return `
+          <div data-finish-id="${esc(e.id)}" style="background:var(--bg-card);border:1px dashed var(--brand-accent);border-radius:8px;padding:10px 14px;font-size:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+              <span style="color:var(--brand-accent);font-weight:700;">${e.weight_in} lb in${e.raw_cost_per_lb!=null ? ` @ $${Number(e.raw_cost_per_lb).toFixed(2)}/lb` : ''} — ${lang==='es'?'esperando peso final':'awaiting finish weight'}</span>
+              <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);">${fmtTime(e.logged_at)}</span>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+              <input type="number" class="finish-weight-input" min="0" step="any" placeholder="${lang==='es'?'peso final (lb)':'finish weight (lb)'}" style="flex:1;padding:8px 10px;border-radius:6px;border:1px solid var(--border-subtle);background:var(--bg-recessed);color:var(--text-hero);font-size:14px;">
+              <button class="finish-weight-btn btn" style="background:var(--brand-accent);color:var(--bg-card);padding:8px 14px;">${lang==='es'?'Terminar':'Finish'}</button>
+            </div>
+          </div>`;
+        }
+        if(e.entry_type === 'weight'){
+          const costPerFinishedLb = (e.raw_cost_per_lb!=null && e.weight_in!=null && e.weight_out>0) ? (e.raw_cost_per_lb * e.weight_in) / e.weight_out : null;
+          const yieldPct = (e.weight_out!=null && e.weight_in>0) ? (e.weight_out/e.weight_in)*100 : null;
+          return `
+          <div style="display:flex;justify-content:space-between;align-items:center;background:var(--bg-card);border-radius:8px;padding:10px 14px;font-size:14px;">
+            <div>
+              <span style="color:var(--brand-accent);font-weight:700;">${e.weight_in} lb in → ${e.weight_out} lb out${yieldPct!=null ? ` — ${yieldPct.toFixed(1)}% yield` : ''}</span>
+              ${costPerFinishedLb!=null ? `<span style="color:var(--text-faint);margin-left:8px;">= $${costPerFinishedLb.toFixed(2)}/lb finished</span>` : `<span style="color:var(--text-faint);margin-left:8px;">(${lang==='es'?'sin costo registrado':'no cost logged'})</span>`}
+            </div>
+            <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);">${fmtTime(e.logged_at)}</span>
+          </div>`;
+        }
+        // entry_type === 'portions'
+        const variance = e.expected_portions - e.actual_portions;
+        const dollarLost = e.dollarLost ?? null;
+        const color = variance > 0 ? 'var(--alert-danger)' : 'var(--alert-success)';
+        const label = variance > 0 ? `${variance.toFixed(variance%1===0?0:1)} short` : variance < 0 ? `${Math.abs(variance).toFixed(Math.abs(variance)%1===0?0:1)} over` : 'On target';
+        return `
+        <div style="display:flex;justify-content:space-between;align-items:center;background:var(--bg-card);border-radius:8px;padding:10px 14px;font-size:14px;">
+          <div>
+            <span style="color:${color};font-weight:700;">${e.actual_portions}/${e.expected_portions} portions — ${label}</span>
+          </div>
+          <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);">${fmtTime(e.logged_at)}</span>
+        </div>`
+      }).join('')}
+      <button id="clearYieldBtn" style="margin-top:4px;padding:8px;border-radius:6px;border:1px solid var(--border-subtle);background:transparent;color:var(--text-faint);font-family:var(--font-mono);font-size:11px;text-transform:uppercase;cursor:pointer;">${lang==='es'?'Esto es solo un historial reciente — no se puede borrar aquí':'This is a recent-history view — cleared from Supabase, not here'}</button>
+    </div>`;
+
+  // The log is now real Postgres history (prep_yield_log is append-only by
+  // design), so there is no local "clear" action -- the button above is
+  // informational only, matching that design instead of pretending to
+  // delete real records.
+  document.getElementById('clearYieldBtn')?.addEventListener('click', ()=>{
+    showToast(lang==='es' ? 'El registro vive en Supabase.' : 'This log lives in Supabase now.');
+  });
+
+  attachFinishWeightHandlers();
+}
+
+function setupPortionYieldLog(it, costPerPortion, targetYield){
+  const actualEl = document.getElementById('yieldActualPortions');
+  const expectedLabel = document.getElementById('expectedYieldLabel');
+  const varBox = document.getElementById('yieldVarianceBox');
+  const varPctBox = document.getElementById('yieldVariancePctBox');
+  const costBox = document.getElementById('yieldCostBox');
+  const resultEl = document.getElementById('yieldResult');
+  const logBtn = document.getElementById('logPortionsBtn');
+
+  if(!actualEl||!expectedLabel||!varBox||!varPctBox||!costBox||!resultEl||!logBtn) return;
+
+  expectedLabel.textContent = targetYield!=null ? `${targetYield % 1===0?targetYield:targetYield.toFixed(1)} portions` : (lang==='es'?'No definido en la receta':'Not set on recipe');
+
+  function resetBoxes(){
+    varBox.textContent='—'; varPctBox.textContent='—'; costBox.textContent='—';
+    varBox.style.color = varPctBox.style.color = costBox.style.color = 'var(--text-faint)';
+  }
+
+  function preview(){
+    const actual = parseFloat(actualEl.value);
+    if(targetYield==null || isNaN(actual) || actual<0){
+      resultEl.innerHTML = targetYield==null ? (lang==='es'?'Esta receta no tiene una meta de porciones definida.':'This recipe has no target portion count set.') : '';
+      resetBoxes();
+      return;
+    }
+
+    const variance = targetYield - actual;
+    const variancePct = targetYield ? (variance/targetYield)*100 : 0;
+    const dollarLost = costPerPortion && variance>0 ? costPerPortion * variance : 0;
+    const color = variance > 0 ? 'var(--alert-danger)' : 'var(--alert-success)';
+
+    varBox.textContent = variance===0 ? (lang==='es'?'En meta':'On target') : (variance>0 ? `-${variance.toFixed(variance%1===0?0:1)}` : `+${Math.abs(variance).toFixed(variance%1===0?0:1)}`);
+    varBox.style.color = color;
+    varPctBox.textContent = `${variancePct.toFixed(1)}%`;
+    varPctBox.style.color = color;
+    costBox.textContent = `$${dollarLost.toFixed(2)}`;
+    costBox.style.color = dollarLost>0 ? color : 'var(--text-faint)';
+
+    resultEl.innerHTML = '';
+  }
+
+  actualEl.addEventListener('input', preview);
+  resetBoxes();
+
+  logBtn.addEventListener('click', async ()=>{
+    const actual = parseFloat(actualEl.value);
+    if(targetYield==null){
+      resultEl.innerHTML = lang==='es'?'Esta receta no tiene una meta de porciones definida.':'This recipe has no target portion count set.';
+      return;
+    }
+    if(isNaN(actual) || actual<0){
+      resultEl.innerHTML = lang==='es'?'Ingrese primero las porciones reales empacadas.':'Enter the actual portions packed first.';
+      return;
+    }
+
+    logBtn.disabled = true;
+    try{
+      const res = await fetch(`${MISE_FUNCTIONS_BASE}/prep-sync-v2`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(miseAuthBody({
+          action:'log_yield', prep_item_id: it.id, entry_type:'portions',
+          expected_portions: targetYield, actual_portions: actual,
+        }))
+      });
+      const data = await res.json();
+      if(!res.ok || !data.success) throw new Error(data.error || ('HTTP '+res.status));
+      yieldLogAll.unshift(data.row);
+      actualEl.value='';
+      resultEl.innerHTML='';
+      resetBoxes();
+      renderYieldEntries();
+      showToast(lang==='es' ? 'Rendimiento registrado ✓' : 'Yield logged ✓');
+    }catch(e){
+      console.warn('log_yield failed', e);
+      resultEl.innerHTML = (lang==='es'?'No se pudo guardar: ':'Could not save: ') + e.message;
+    }finally{
+      logBtn.disabled = false;
+    }
+  });
+}
+
+function setupButcheryYieldLog(it){
+  const inEl = document.getElementById('yieldWeightIn');
+  const costEl = document.getElementById('yieldCostPerLb');
+  const btn = document.getElementById('logWeightInBtn');
+  const resultEl = document.getElementById('yieldResult');
+
+  if(!inEl||!costEl||!btn||!resultEl) return;
+  if(btn.dataset.bound) return; // never attach a second click listener to the same button
+  btn.dataset.bound = '1';
+
+  btn.addEventListener('click', async ()=>{
+    if(btn.disabled) return;
+
+    const weightIn = parseFloat(inEl.value);
+    const rawCostPerLb = parseFloat(costEl.value);
+
+    if(isNaN(weightIn) || weightIn<=0){
+      resultEl.innerHTML = lang==='es'?'Ingrese primero el peso real recibido.':'Enter the actual weight received first.';
+      return;
+    }
+
+    btn.disabled = true;
+    const haveCost = !isNaN(rawCostPerLb) && rawCostPerLb>0;
+
+    try{
+      const res = await fetch(`${MISE_FUNCTIONS_BASE}/prep-sync-v2`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(miseAuthBody({
+          action:'log_yield', prep_item_id: it.id, entry_type:'weight', status:'pending',
+          weight_in: weightIn, raw_cost_per_lb: haveCost ? rawCostPerLb : null,
+        }))
+      });
+      const data = await res.json();
+      if(!res.ok || !data.success) throw new Error(data.error || ('HTTP '+res.status));
+      yieldLogAll.unshift(data.row);
+      inEl.value=''; costEl.value='';
+      resultEl.innerHTML='';
+      renderYieldEntries();
+      showToast(lang==='es' ? 'Peso inicial registrado — termínelo cuando esté listo.' : "Weight in logged — finish it whenever you're done.");
+    }catch(e){
+      console.warn('log_yield (weight-in) failed', e);
+      resultEl.innerHTML = (lang==='es'?'No se pudo guardar: ':'Could not save: ') + e.message;
+    }finally{
+      btn.disabled = false;
+    }
+  });
+}
+
+function attachFinishWeightHandlers(){
+  document.querySelectorAll('[data-finish-id]').forEach(row=>{
+    const id = row.dataset.finishId;
+    const outInput = row.querySelector('.finish-weight-input');
+    const finishBtn = row.querySelector('.finish-weight-btn');
+
+    if(!outInput||!finishBtn) return;
+    if(finishBtn.dataset.bound) return;
+    finishBtn.dataset.bound = '1';
+
+    finishBtn.addEventListener('click', async ()=>{
+      const weightOut = parseFloat(outInput.value);
+      const entry = yieldLogAll.find(e=>e.id===id);
+      if(!entry) return;
+
+      if(isNaN(weightOut) || weightOut<0){
+        showToast(lang==='es' ? 'Ingrese primero el peso final.' : 'Enter the finished weight first.');
+        return;
+      }
+      if(weightOut > entry.weight_in){
+        showToast(lang==='es' ? 'El peso final no puede ser mayor que el peso inicial.' : "Finished weight can't be more than what came in.");
+        return;
+      }
+
+      finishBtn.disabled = true;
+      try{
+        const res = await fetch(`${MISE_FUNCTIONS_BASE}/prep-sync-v2`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(miseAuthBody({ action:'finish_yield', related_entry_id: id, weight_out: weightOut }))
+        });
+        const data = await res.json();
+        if(!res.ok || !data.success) throw new Error(data.error || ('HTTP '+res.status));
+        entry.status = 'closed';
+        yieldLogAll.unshift(data.row);
+        renderYieldEntries();
+        showToast(lang==='es' ? 'Peso final registrado ✓' : 'Finished weight logged ✓');
+      }catch(e){
+        console.warn('finish_yield failed', e);
+        showToast((lang==='es'?'No se pudo guardar: ':'Could not save: ') + e.message);
+      }finally{
+        finishBtn.disabled = false;
+      }
+    });
+  });
+}
+
+// ═════ App Initialization ═════
+async function initApp() {
+  document.getElementById('langToggle').textContent = lang==='es' ? 'ES' : 'EN';
+  document.getElementById('langToggle').addEventListener('click', ()=> setLang(lang==='es' ? 'en' : 'es'));
+  document.getElementById('headerSub').textContent = lang==='es' ? "Receta y Registro de Rendimiento de Hoy" : "Today's Recipe & Yield Log";
+
+  await loadPrepData();
+  renderPicker();
+  renderRecipe();
+}
+
+initApp();
+
+</script>
+</body>
+</html>
