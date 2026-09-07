@@ -4,5 +4,8 @@
   "assets": {
     "directory": "./public",
     "not_found_handling": "single-page-application"
-  }
+  },
+  "routes": [
+    { "pattern": "www.miseai-0000.com", "custom_domain": true }
+  ]
 }
