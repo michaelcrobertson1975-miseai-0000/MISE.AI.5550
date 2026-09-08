@@ -6,7 +6,7 @@
  * price columns, and POSTs rows shaped {d,i,c,q,p}. This endpoint never existed,
  * so DEMO_MODE was true and the confirm button reported a fake row count.
  *
- *   POST { rows:[{d,i,c,q,p}], restaurant_id, doc_type? }
+ *   POST { rows:[{d,i,c,q,p}], restaurant_id, api_token, doc_type? }
  *   ->   { inserted, rejected:[{row, reason}] }
  *
  * Rejected rows come back with the reason and the row number, because a chef
@@ -55,19 +55,24 @@ Deno.serve(async (req) => {
   catch (err) { return json({ error: `Unparseable body: ${err.message}` }, 400); }
 
   const clientId = String(body.restaurant_id ?? '').trim();
+  const apiToken = String(body.api_token ?? '').trim();
   const docType = String(body.doc_type ?? 'invoice');
   const rows = Array.isArray(body.rows) ? body.rows : [];
 
   if (!clientId) return json({ error: 'restaurant_id is required.' }, 400);
+  if (!apiToken) return json({ error: 'api_token is required.' }, 401);
   if (!rows.length) return json({ error: 'No rows to upload.' }, 400);
   if (rows.length > MAX_ROWS) return json({ error: `${rows.length} rows is over the ${MAX_ROWS} row limit for one upload.` }, 413);
 
   const db = createClient(Deno.env.get('SUPABASE_URL'), Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
 
   const { data: client, error: clientErr } = await db
-    .from('clients').select('id, name, status').eq('id', clientId).maybeSingle();
+    .from('clients').select('id, name, status, api_token').eq('id', clientId).maybeSingle();
   if (clientErr) return json({ error: clientErr.message }, 500);
   if (!client) return json({ error: 'That restaurant is not set up.' }, 404);
+  if (String(client.api_token) !== apiToken) {
+    return json({ error: 'Wrong api_token for this restaurant_id.' }, 401);
+  }
   if (!['active', 'trial'].includes(client.status)) {
     return json({ error: `This account is ${client.status}.` }, 403);
   }

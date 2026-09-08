@@ -26,6 +26,21 @@ const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body, null, 2), { status, headers: { 'Content-Type': 'application/json' } });
 
+/**
+ * INTERNAL ONLY. These two ingestion functions cost real money per page and
+ * write straight into a restaurant's books, so they are not part of the public
+ * surface. Callers are the queue worker and upload-scan, both of which run
+ * server-side and hold the service-role key. A caller holding only the anon
+ * key -- which is published in the front end by design -- is refused.
+ */
+function callerIsInternal(req) {
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!serviceKey) return false;
+  const auth = req.headers.get('authorization') ?? '';
+  const bearer = auth.replace(/^Bearer\s+/i, '').trim();
+  return bearer === serviceKey;
+}
+
 function findKey() {
   for (const name of KEY_NAMES) {
     const value = Deno.env.get(name);
@@ -105,6 +120,7 @@ Deno.serve(async (req) => {
     }, key ? 200 : 503);
   }
   if (req.method !== 'POST') return json({ error: 'POST only.' }, 405);
+  if (!callerIsInternal(req)) return json({ error: 'This endpoint is internal. Nightly reports arrive through the inbound-email queue.' }, 401);
   if (!key) return json({ error: `No Gemini credential. Set one of ${KEY_NAMES.join(', ')}.` }, 503);
 
   const clientId = url.searchParams.get('client_id');

@@ -40,11 +40,13 @@ Deno.serve(async (req) => {
   const file = form.get('file');
   const docType = String(form.get('doc_type') ?? 'invoice');
   const clientId = String(form.get('restaurant_id') ?? '').trim();
+  const apiToken = String(form.get('api_token') ?? '').trim();
 
   if (!(file instanceof File) && !(file instanceof Blob)) {
     return json({ error: 'No file in the form.' }, 400);
   }
   if (!clientId) return json({ error: 'restaurant_id is required.' }, 400);
+  if (!apiToken) return json({ error: 'api_token is required.' }, 401);
 
   const name = (file.name ?? 'upload').toString();
   const mimeType = (file.type || 'application/octet-stream').split(';')[0].trim();
@@ -55,9 +57,15 @@ Deno.serve(async (req) => {
 
   // The client has to exist, or the invoice lands under a uuid pointing nowhere.
   const { data: client, error: clientErr } = await db
-    .from('clients').select('id, name, status').eq('id', clientId).maybeSingle();
+    .from('clients').select('id, name, status, api_token').eq('id', clientId).maybeSingle();
   if (clientErr) return json({ error: clientErr.message }, 500);
   if (!client) return json({ error: 'That restaurant is not set up.' }, 404);
+  // An existence check is a spelling check, not an authorisation check: without
+  // this, anyone could push invoices into any restaurant's books (and bill us
+  // for the extraction).
+  if (String(client.api_token) !== apiToken) {
+    return json({ error: 'Wrong api_token for this restaurant_id.' }, 401);
+  }
   if (!['active', 'trial'].includes(client.status)) {
     return json({ error: `This account is ${client.status}. Get in touch and we'll switch it back on.` }, 403);
   }
@@ -70,7 +78,7 @@ Deno.serve(async (req) => {
       const res = await fetch(
         `${Deno.env.get('SUPABASE_URL')}/functions/v1/ingest-invoice?client_id=${encodeURIComponent(clientId)}`,
         { method: 'POST',
-          headers: { Authorization: `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`, 'Content-Type': mimeType },
+          headers: { Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`, 'Content-Type': mimeType },
           body: bytes });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {

@@ -86,11 +86,16 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'POST only.' }, 405);
 
   const expected = Deno.env.get('INBOUND_TOKEN');
-  if (expected) {
+  // Fail closed. This used to skip the check entirely when the secret was
+  // missing, so a restore or a renamed environment variable silently turned
+  // authentication off on a public endpoint instead of stopping the service.
+  if (!expected) {
+    console.error('[email] INBOUND_TOKEN is not set - refusing inbound mail rather than accepting it unauthenticated.');
+    return json({ error: 'Inbound mail is not configured.' }, 503);
+  }
+  {
     const given = url.searchParams.get('token') ?? req.headers.get('x-inbound-token');
     if (given !== expected) return json({ error: 'Bad or missing token.' }, 401);
-  } else {
-    console.warn('[email] INBOUND_TOKEN is not set - this endpoint is currently unauthenticated.');
   }
 
   const contentType = (req.headers.get('content-type') ?? '').toLowerCase();

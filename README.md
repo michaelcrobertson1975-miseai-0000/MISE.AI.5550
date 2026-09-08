@@ -59,10 +59,32 @@ docs/                Reserved for project documentation.
 
 ## Auth model
 
-Most client-facing functions (`order-guide`, `beverage-guide`, `product-mix`, `prep-sync-v2`,
-`schedule-sync`, `monthly-audit`, `monthly-audit-v2`) use a custom token check against
-`clients.api_token` (with `clients.status` required to be `active` or `trial`) rather than
-standard Supabase JWT auth.
+Every function falls into one of three groups.
+
+**Client-facing — `restaurant_id` + `api_token`.** `api`, `order-guide`, `beverage-guide`,
+`product-mix`, `prep-sync-v2`, `schedule-sync`, `monthly-audit`, `monthly-audit-v2`,
+`upload-scan` and `intake-upload` check the pair against `clients.api_token`, with
+`clients.status` required to be `active` or `trial`. This is a custom check rather than
+Supabase JWT auth.
+
+**Internal only — service-role key.** `ingest-invoice` and `ingest-nightly-report` cost real
+money per page and write directly into a restaurant's books, so they refuse any caller that
+does not present the service-role key. Their callers are `process-queue` and `upload-scan`,
+both server-side. `email-inbound` is the third internal endpoint; it cannot use a JWT because
+mail providers cannot mint one, so it requires `INBOUND_TOKEN` and refuses to serve at all
+when that secret is unset.
+
+**Session-gated — `review`.** Gated by `REVIEW_ACCESS_CODE`, which is exchanged at login for
+a signed, expiring session cookie. The page's data access goes through `/review/db/...` on
+the function itself, which re-checks the session and forwards to PostgREST with the
+service-role key against a table and verb allowlist. It does not use the anon key, and the
+invoice tables carry no anon policies.
+
+> **Known gap.** `apps/chef-app` and `apps/cook-app` still hardcode `MISE_API_TOKEN` in
+> client-side JavaScript, so the token reaches every visitor. The checks above are real, but a
+> published credential passes them. Replacing this with per-user auth (Supabase Auth + RLS, or
+> Cloudflare Access injecting the token server-side) is the outstanding piece of work, and the
+> token should be rotated when it lands.
 
 ## Local development
 

@@ -2509,7 +2509,7 @@ let corrSavedDocs = {};
 
 async function fetchCorrectionsQueue(){
   try{
-    const res = await fetch(`${CORR_API_BASE}/api/invoices/review-queue?restaurant_id=${encodeURIComponent(CORR_RESTAURANT_ID)}`);
+    const res = await fetch(`${CORR_API_BASE}/api/invoices/review-queue?${miseAuthQS()}`);
     const data = await res.json();
     if(!res.ok || !data.success) throw new Error(data.error || 'Failed to load review queue');
     correctionsQueue = (data.queue || []).map(doc => ({
@@ -2582,7 +2582,7 @@ async function saveCorrection(docId){
   // (non-deleted) line is what fires the v7 database trigger and makes
   // this SKU auto-match next time, with zero owner input.
   const payload = {
-    restaurant_id: CORR_RESTAURANT_ID,
+    ...miseAuthBody(),
     document_id: doc.document_id,
     invoice_id: doc.invoice_id,
     header: {
@@ -3658,7 +3658,7 @@ async function handleScanFile(file) {
   form.append('file', file);
   form.append('doc_type', activeDocType);
   if (!RESTAURANT_ID) { form.append('demo', 'true'); }
-  else { form.append('restaurant_id', RESTAURANT_ID); }
+  else { form.append('restaurant_id', RESTAURANT_ID); form.append('api_token', MISE_API_TOKEN); }
 
   try {
     const res = await fetch(SUPABASE_URL + '/functions/v1/upload-scan', {
@@ -3796,7 +3796,7 @@ if (confirmBtn) confirmBtn.addEventListener('click', async () => {
   }
 
   const body = { rows: dataRows };
-  if (!RESTAURANT_ID) body.demo = true; else body.restaurant_id = RESTAURANT_ID;
+  if (!RESTAURANT_ID) body.demo = true; else Object.assign(body, miseAuthBody());
 
   try {
     const res = await fetch(SUPABASE_URL + '/functions/v1/intake-upload', {

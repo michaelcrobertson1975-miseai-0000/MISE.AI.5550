@@ -41,6 +41,23 @@ const json = (body, status = 200) =>
 
 const db = () => createClient(Deno.env.get('SUPABASE_URL'), Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
 
+/**
+ * AUTH: restaurant_id + api_token must match clients.api_token, same as
+ * order-guide / beverage-guide / prep-sync-v2 and the rest of the
+ * client-facing functions. This function reads and PATCHes invoice lines,
+ * and a completed invoice feeds the P&L, so a restaurant_id on its own --
+ * an identifier, not a credential -- is not enough to get in here.
+ */
+async function authClient(supabase, restaurantId, apiToken) {
+  if (!restaurantId || !apiToken) return { error: 'restaurant_id and api_token are both required.' };
+  const { data, error } = await supabase.from('clients').select('id, status, api_token').eq('id', restaurantId).maybeSingle();
+  if (error) return { error: error.message };
+  if (!data) return { error: 'No such restaurant.' };
+  if (String(data.api_token) !== String(apiToken)) return { error: 'Wrong api_token for this restaurant_id.' };
+  if (!['active', 'trial'].includes(data.status)) return { error: `This account is ${data.status}.` };
+  return { client: data };
+}
+
 const num = (v) => {
   if (v === '' || v === null || v === undefined) return null;
   const n = Number(v);
@@ -101,9 +118,11 @@ function assess(inv, lines) {
 /* ── GET /api/invoices/review-queue ────────────────────────────────────────── */
 async function reviewQueue(url) {
   const restaurantId = url.searchParams.get('restaurant_id');
-  if (!restaurantId) return json({ success: false, error: 'restaurant_id is required' }, 400);
 
   const supabase = db();
+  const auth = await authClient(supabase, restaurantId, url.searchParams.get('api_token'));
+  if (auth.error) return json({ success: false, error: auth.error }, 401);
+
   const { data, error } = await supabase
     .from('invoices')
     .select('*, invoice_line_items(*)')
@@ -155,13 +174,17 @@ async function saveLines(req) {
   if (!invoiceId) return json({ success: false, error: 'invoice_id (or document_id) is required' }, 400);
 
   const supabase = db();
+  const auth = await authClient(supabase, restaurantId, payload.api_token);
+  if (auth.error) return json({ success: false, error: auth.error }, 401);
 
   // Read the current state first: corrections are only meaningful against what
   // the model originally produced.
   const { data: before, error: readErr } = await supabase
     .from('invoices').select('*, invoice_line_items(*)').eq('id', invoiceId).single();
   if (readErr) return json({ success: false, error: `Invoice not found: ${readErr.message}` }, 404);
-  if (restaurantId && before.client_id !== restaurantId) {
+  // Ownership is now unconditional. It used to be skipped whenever the caller
+  // simply left restaurant_id out, which let any invoice id be patched.
+  if (before.client_id !== auth.client.id) {
     return json({ success: false, error: 'Invoice does not belong to that restaurant.' }, 403);
   }
 
@@ -295,10 +318,12 @@ async function saveLines(req) {
 /* ── GET /api/invoices/price-moves ──────────────────────────────────────────── */
 async function priceMoves(url) {
   const restaurantId = url.searchParams.get('restaurant_id');
-  if (!restaurantId) return json({ success: false, error: 'restaurant_id is required' }, 400);
   const threshold = Number(url.searchParams.get('threshold') ?? '8');
 
   const supabase = db();
+  const auth = await authClient(supabase, restaurantId, url.searchParams.get('api_token'));
+  if (auth.error) return json({ success: false, error: auth.error }, 401);
+
   const { data, error } = await supabase
     .from('v_item_price_variance')
     .select('*')
@@ -359,9 +384,9 @@ Deno.serve(async (req) => {
       return json({
         success: true,
         service: 'miseai chef-app api',
-        routes: ['GET /api/invoices/review-queue?restaurant_id=',
-                 'PATCH /api/invoices/lines',
-                 'GET /api/invoices/price-moves?restaurant_id=&threshold='],
+        routes: ['GET /api/invoices/review-queue?restaurant_id=&api_token=',
+                 'PATCH /api/invoices/lines  { restaurant_id, api_token, ... }',
+                 'GET /api/invoices/price-moves?restaurant_id=&api_token=&threshold='],
         database: Boolean(Deno.env.get('SUPABASE_URL')),
       });
     }

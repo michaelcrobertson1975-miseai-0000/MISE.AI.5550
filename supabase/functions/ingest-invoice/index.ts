@@ -26,6 +26,7 @@ const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const INVOICE_BUCKET = 'invoice-files';
 const MAX_PAGES = 24;
 const MAX_OUTPUT_TOKENS = 32768;
+const PAGE_CONCURRENCY = 5;
 const ONE_LIVE_PER_NUMBER_INDEX = 'invoices_one_live_per_number';
 
 const FILE_EXT = {
@@ -45,6 +46,41 @@ function vertexConfig() {
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body, null, 2), { status, headers: { 'Content-Type': 'application/json' } });
+
+/**
+ * Run tasks with a ceiling on how many are in flight at once, preserving the
+ * order of the results. A 24-page invoice used to fire 24 Gemini calls in the
+ * same instant while the queue was pacing one job a minute -- the throttle and
+ * the burst were fighting each other, and the burst is what trips rate limits.
+ */
+async function mapWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+/**
+ * INTERNAL ONLY. These two ingestion functions cost real money per page and
+ * write straight into a restaurant's books, so they are not part of the public
+ * surface. Callers are the queue worker and upload-scan, both of which run
+ * server-side and hold the service-role key. A caller holding only the anon
+ * key -- which is published in the front end by design -- is refused.
+ */
+function callerIsInternal(req) {
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!serviceKey) return false;
+  const auth = req.headers.get('authorization') ?? '';
+  const bearer = auth.replace(/^Bearer\s+/i, '').trim();
+  return bearer === serviceKey;
+}
 
 function findKey() {
   for (const name of KEY_NAMES) {
@@ -260,6 +296,7 @@ Deno.serve(async (req) => {
   }
 
   if (req.method !== 'POST') return json({ error: 'Use POST with the invoice bytes as the body.' }, 405);
+  if (!callerIsInternal(req)) return json({ error: 'This endpoint is internal. Send invoices through upload-scan or the inbound-email queue.' }, 401);
   if (!key && !saName) return json({ error: `No credential. Set one of ${SA_NAMES.join(', ')} for Vertex, or ${KEY_NAMES[0]} for AI Studio.` }, 503);
 
   const clientId = url.searchParams.get('client_id');
@@ -279,7 +316,7 @@ Deno.serve(async (req) => {
   try {
     const models = [url.searchParams.get('model'), Deno.env.get('GEMINI_MODEL'), ...MODEL_FALLBACKS];
     const vertex = vertexConfig();
-    const results = await Promise.all(pages.map((p) => vertex ? callVertex(p, vertex, models) : callGemini(p, key.value, models)));
+    const results = await mapWithConcurrency(pages, PAGE_CONCURRENCY, (p) => vertex ? callVertex(p, vertex, models) : callGemini(p, key.value, models));
     readings = results.map((r) => r.data);
     modelUsed = results[0].model;
     routeUsed = vertex ? `vertex:${vertex.project}/${vertex.region}` : 'ai-studio';

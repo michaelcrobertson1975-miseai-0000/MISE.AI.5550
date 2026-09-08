@@ -20,11 +20,47 @@
  * Categories come from the pnl_categories table, never from a list in here, so
  * adding TO_GO or splitting PAPER is an INSERT rather than a redeploy.
  */
-const ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFoZm15d29udGR3d2ZhcG93cXBvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzMjg1NTEsImV4cCI6MjEwMzkwNDU1MX0.O0JeiPQVUh2OQCTgTrVdHnkvkl2J9mGeFaLZorOJfVg';
 
 const ACCESS_CODE = Deno.env.get('REVIEW_ACCESS_CODE');
 const COOKIE_NAME = 'mise_review_auth';
+const SESSION_DAYS = 30;
+
+/**
+ * The cookie used to be the access code itself, in plaintext -- so anyone who
+ * read the cookie jar read the password, and there was no way to end one
+ * person's session without changing the code for everyone. This issues a
+ * signed, expiring token instead: "<expires>.<hmac>", verified server-side.
+ * The code never leaves the server after login.
+ */
+const enc = new TextEncoder();
+
+async function signingKey() {
+  return await crypto.subtle.importKey(
+    'raw', enc.encode(ACCESS_CODE), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'],
+  );
+}
+
+const toHex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+
+async function issueSession() {
+  const expires = Date.now() + SESSION_DAYS * 86_400_000;
+  const mac = await crypto.subtle.sign('HMAC', await signingKey(), enc.encode(String(expires)));
+  return `${expires}.${toHex(mac)}`;
+}
+
+async function sessionIsValid(value) {
+  if (!value) return false;
+  const [expires, mac] = String(value).split('.');
+  if (!expires || !mac) return false;
+  if (!Number(expires) || Number(expires) < Date.now()) return false;
+  const expected = await crypto.subtle.sign('HMAC', await signingKey(), enc.encode(expires));
+  const expectedHex = toHex(expected);
+  // Constant-time compare so a wrong token cannot be guessed byte by byte.
+  if (expectedHex.length !== mac.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expectedHex.length; i++) diff |= expectedHex.charCodeAt(i) ^ mac.charCodeAt(i);
+  return diff === 0;
+}
 
 function getCookie(req, name) {
   const header = req.headers.get('cookie') ?? '';
@@ -149,8 +185,8 @@ body{margin:0;background:var(--bg-page);color:var(--text-hero);font:14px/1.5 var
 <div class="corr-wrap" id="wrap"><div class="corr-empty">Loading...</div></div>
 <div class="footnote">Every correction logged &middot; Matches feed your Price Moves tab automatically</div>
 <script>
-var KEY=${JSON.stringify(ANON_KEY)};
-var HDRS={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
+var DB='/functions/v1/review/db/';
+var HDRS={'Content-Type':'application/json'};
 var TOL=0.02;
 var FEE_RE=/FUEL|SURCHARGE|DELIVERY|FREIGHT|SPLIT\s*CASE|MIN(IMUM)?\s*ORDER|PICKUP|CREDIT|DEPOSIT/i;
 
@@ -267,15 +303,15 @@ function severity(inv){
 async function load(){
   wrap.innerHTML='<div class="corr-empty">Loading...</div>';
   try{
-    var r=await fetch('/rest/v1/invoices?select=*,invoice_line_items(*)&status=neq.completed'+
+    var r=await fetch(DB+'invoices?select=*,invoice_line_items(*)&status=neq.completed'+
       '&invoice_line_items.removed_by_review=is.false&order=created_at.desc&limit=50',{headers:HDRS});
     if(!r.ok)throw new Error('HTTP '+r.status+' '+(await r.text()).slice(0,200));
     invoices=await r.json();
 
-    var cr=await fetch('/rest/v1/pnl_categories?select=code,label,sort_order&order=sort_order.asc',{headers:HDRS});
+    var cr=await fetch(DB+'pnl_categories?select=code,label,sort_order&order=sort_order.asc',{headers:HDRS});
     categories=cr.ok?await cr.json():[];
 
-    var ir=await fetch('/rest/v1/ingredients?select=*&order=name.asc&limit=2000',{headers:HDRS});
+    var ir=await fetch(DB+'ingredients?select=*&order=name.asc&limit=2000',{headers:HDRS});
     ingredients=ir.ok?await ir.json():[];
 
     edits={};removed={};added={};
@@ -417,7 +453,7 @@ wrap.addEventListener('change',async function(ev){
     var name=prompt('Name this ingredient (it becomes the key Price Moves tracks):');
     if(!name){t.value=cur(t.dataset.inv,t.dataset.line,'ingredient_id','')||'';return;}
     try{
-      var r=await fetch('/rest/v1/ingredients',{method:'POST',
+      var r=await fetch(DB+'ingredients',{method:'POST',
         headers:Object.assign({},HDRS,{Prefer:'return=representation'}),
         body:JSON.stringify([{client_id:inv.client_id,name:name.trim()}])});
       if(!r.ok)throw new Error((await r.text()).slice(0,200));
@@ -501,7 +537,7 @@ async function save(invId){
       });
       if(!payload.item_description)continue;
       if(payload.ingredient_id)payload.matched_at=new Date().toISOString();
-      var ar=await fetch('/rest/v1/invoice_line_items',{method:'POST',headers:HDRS,body:JSON.stringify([payload])});
+      var ar=await fetch(DB+'invoice_line_items',{method:'POST',headers:HDRS,body:JSON.stringify([payload])});
       if(!ar.ok)throw new Error('add line: '+(await ar.text()).slice(0,200));
       corrections.push({invoice_id:invId,line_item_id:null,field_name:'line_added',
         old_value:null,new_value:payload.item_description,model_used:inv.model_used||null});
@@ -539,7 +575,7 @@ async function save(invId){
     }
 
     if(corrections.length){
-      var cr=await fetch('/rest/v1/invoice_corrections',{method:'POST',headers:HDRS,body:JSON.stringify(corrections)});
+      var cr=await fetch(DB+'invoice_corrections',{method:'POST',headers:HDRS,body:JSON.stringify(corrections)});
       if(!cr.ok)throw new Error('corrections: '+(await cr.text()).slice(0,200));
     }
 
@@ -557,12 +593,62 @@ async function save(invId){
 }
 
 async function patchRow(table,id,patch){
-  var r=await fetch('/rest/v1/'+table+'?id=eq.'+id,{method:'PATCH',headers:HDRS,body:JSON.stringify(patch)});
+  var r=await fetch(DB+table+'?id=eq.'+id,{method:'PATCH',headers:HDRS,body:JSON.stringify(patch)});
   if(!r.ok)throw new Error(table+': '+(await r.text()).slice(0,200));
 }
 
 load();
 </script></body></html>`;
+
+
+/**
+ * Gated data proxy.
+ *
+ * The page used to query PostgREST straight from the browser with the anon
+ * key, which required anon policies on invoices / invoice_line_items /
+ * ingredients / pnl_categories / invoice_corrections. Those policies were
+ * USING (true) with no client scoping, so the anon key -- public by design,
+ * and shipped in the front end -- was itself read/write access to every
+ * restaurant's invoices, whether or not the caller ever loaded this page.
+ *
+ * Requests now come here instead, behind the same session cookie that gates
+ * the page, and are forwarded with the service-role key. The allowlist keeps
+ * a session from becoming general database access: only the tables and verbs
+ * this page actually uses get through.
+ */
+const PROXY_ALLOW = {
+  invoices:            ['GET', 'PATCH'],
+  invoice_line_items:  ['GET', 'POST', 'PATCH'],
+  ingredients:         ['GET', 'POST'],
+  pnl_categories:      ['GET'],
+  invoice_corrections: ['POST'],
+};
+
+async function proxyToPostgrest(req, rest) {
+  const [table] = rest.split('?');
+  const allowed = PROXY_ALLOW[table];
+  if (!allowed) return new Response(JSON.stringify({ error: `Not available: ${table}` }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+  if (!allowed.includes(req.method)) return new Response(JSON.stringify({ error: `${req.method} not allowed on ${table}` }), { status: 405, headers: { 'Content-Type': 'application/json' } });
+
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const headers = {
+    apikey: serviceKey,
+    Authorization: `Bearer ${serviceKey}`,
+    'Content-Type': 'application/json',
+  };
+  const prefer = req.headers.get('prefer');
+  if (prefer) headers['Prefer'] = prefer;
+
+  const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/rest/v1/${rest}`, {
+    method: req.method,
+    headers,
+    body: req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.text(),
+  });
+  return new Response(await res.text(), {
+    status: res.status,
+    headers: { 'Content-Type': res.headers.get('content-type') ?? 'application/json' },
+  });
+}
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
@@ -580,7 +666,7 @@ Deno.serve(async (req) => {
       return new Response(null, {
         status: 302,
         headers: {
-          'Set-Cookie': `${COOKIE_NAME}=${ACCESS_CODE}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax`,
+          'Set-Cookie': `${COOKIE_NAME}=${await issueSession()}; Path=/; Max-Age=${SESSION_DAYS * 86400}; HttpOnly; Secure; SameSite=Lax`,
           'Location': url.pathname,
         },
       });
@@ -589,9 +675,14 @@ Deno.serve(async (req) => {
   }
 
   const cookieValue = getCookie(req, COOKIE_NAME);
-  if (cookieValue !== ACCESS_CODE) {
+  const dbPath = url.pathname.match(/\/review\/db\/(.+)$/);
+
+  if (!(await sessionIsValid(cookieValue))) {
+    if (dbPath) return new Response(JSON.stringify({ error: 'Session expired. Reload the Review Queue and sign in again.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
     return new Response(LOGIN_PAGE(false), { status: 401, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
   }
+
+  if (dbPath) return await proxyToPostgrest(req, dbPath[1] + url.search);
 
   return new Response(PAGE, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 });
