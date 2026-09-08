@@ -1,0 +1,14 @@
+name = "mise-email-inbound"
+main = "src/index.js"
+compatibility_date = "2026-09-08"
+
+# No routes, no fetch handler: this Worker is invoked only by Cloudflare Email
+# Routing, which delivers messages to the email() handler.
+
+[vars]
+# The Supabase function that already does routing, queueing and parsing.
+EMAIL_INBOUND_URL = "https://qhfmywontdwwfapowqpo.supabase.co/functions/v1/email-inbound"
+
+# INBOUND_TOKEN is a SECRET, never a var. Set it with:
+#   wrangler secret put INBOUND_TOKEN
+# It must match the INBOUND_TOKEN secret set in Supabase.
