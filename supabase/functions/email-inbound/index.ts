@@ -7,12 +7,16 @@
  * Worker each POST a different shape, so this pulls attachments out of whichever
  * arrives rather than committing to one vendor's contract.
  *
- * QUEUED, NOT PROCESSED HERE. Attachments are written to ingestion_queue and
- * the webhook returns immediately. A separate worker (process-queue), run on a
- * schedule, drains that queue one job at a time. This means ten restaurants
- * all emailing at once never all hit Gemini in the same second - they just
- * queue up and get worked through steadily. Extraction used to run inline
- * here (via EdgeRuntime.waitUntil); that is gone now in favor of the queue.
+ * STRAIGHT TO INGEST-INVOICE. Attachments go directly to the ingestion
+ * function, which is how this ran before the queue was introduced. The webhook
+ * answers the mail provider immediately and extraction continues in the
+ * background via EdgeRuntime.waitUntil, because Gemini takes ten to twenty
+ * seconds a page and a provider will not wait that long.
+ *
+ * ingestion_queue is still there, but only as a safety net: if the direct call
+ * fails, the job is parked on the queue and process-queue retries it. The
+ * provider was already told 200 and will never resend, so an invoice that
+ * cannot be parsed right now must land somewhere rather than disappear.
  *
  * Resend is the exception worth knowing about: its email.received webhook sends
  * attachment METADATA only -- filename, content_type, id -- and no bytes. The
@@ -105,16 +109,58 @@ async function svixSignatureIsValid(headers, rawBody, secret) {
   return false;
 }
 
-/** One queue job per email's worth of attachments - pages of one document stay together. */
-async function enqueue(db, clientId, jobType, files) {
-  const { data, error } = await db.from('ingestion_queue').insert({
-    client_id: clientId,
-    job_type: jobType,
-    payload: { files: files.map((f) => ({ name: f.name, mimeType: f.type, data: encodeBase64(f.bytes) })) },
-  }).select('id').single();
-  if (error) throw new Error(`Could not queue job: ${error.message}`);
-  console.log(`[email] queued ${jobType} job=${data.id} client=${clientId} pages=${files.length} (${files.map((f) => f.name).join(', ')})`);
-  return data.id;
+const FUNCTION_FOR_JOB_TYPE = { invoice: 'ingest-invoice', nightly_report: 'ingest-nightly-report' };
+
+/** The payload shape both ingestion functions expect. */
+const filesPayload = (files) => ({
+  files: files.map((f) => ({ name: f.name, mimeType: f.type, data: encodeBase64(f.bytes) })),
+});
+
+/**
+ * Straight to ingest-invoice, the way this ran before the queue was added.
+ *
+ * A mail provider needs its 200 quickly and Gemini takes ten to twenty seconds
+ * a page, so the call is handed to EdgeRuntime.waitUntil: the webhook answers
+ * immediately while extraction carries on in the background.
+ */
+function dispatchDirect(clientId, jobType, files) {
+  const target = FUNCTION_FOR_JOB_TYPE[jobType];
+  const url = `${Deno.env.get('SUPABASE_URL')}/functions/v1/${target}?client_id=${encodeURIComponent(clientId)}`;
+  const body = JSON.stringify(filesPayload(files));
+
+  const run = (async () => {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          'Content-Type': 'application/json',
+        },
+        body,
+      });
+      const text = await res.text().catch(() => '');
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 300)}`);
+      console.log(`[email] ${target} finished for client=${clientId}: ${text.slice(0, 300)}`);
+    } catch (err) {
+      // Extraction failed after the webhook already answered, so the provider
+      // will never resend. Park the job instead of losing the invoice; the
+      // queue worker retries it on its next pass.
+      console.error(`[email] direct ${target} failed (${err.message}) - falling back to the queue.`);
+      try {
+        const db = createClient(Deno.env.get('SUPABASE_URL'), Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
+        await db.from('ingestion_queue').insert({
+          client_id: clientId, job_type: jobType, payload: filesPayload(files),
+          last_error: `Direct dispatch failed: ${err.message}`,
+        });
+      } catch (queueErr) {
+        console.error(`[email] FALLBACK QUEUE ALSO FAILED - invoice lost: ${queueErr.message}`);
+      }
+    }
+  })();
+
+  // Available in Supabase Edge; if absent the call still runs, just awaited.
+  if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) EdgeRuntime.waitUntil(run);
+  return run;
 }
 
 Deno.serve(async (req) => {
@@ -238,19 +284,17 @@ Deno.serve(async (req) => {
     });
   }
 
-  let jobId;
-  try {
-    jobId = await enqueue(db, clientId, jobType, attachments);
-  } catch (err) {
-    console.error('[email] enqueue failed:', err.message);
-    return json({ error: err.message }, 500);
+  if (!FUNCTION_FOR_JOB_TYPE[jobType]) {
+    return json({ error: `Unknown job_type: ${jobType}` }, 400);
   }
 
+  dispatchDirect(clientId, jobType, attachments);
+
   return json({
-    status: 'QUEUED', from: sender, to: recipients, routed_via: matchedAddress,
-    client_id: clientId, job_type: jobType, job_id: jobId, subject,
-    queued: attachments.map((f) => ({ filename: f.name, type: f.type, from_forwarded_mail: f.unwrapped ?? false })),
-    note: `${attachments.length} attachment(s) queued as a ${jobType} job. A worker processes the queue on a schedule - this is not processed inline anymore.`,
+    status: 'PROCESSING', from: sender, to: recipients, routed_via: matchedAddress,
+    client_id: clientId, job_type: jobType, subject,
+    received: attachments.map((f) => ({ filename: f.name, type: f.type, from_forwarded_mail: f.unwrapped ?? false })),
+    note: `${attachments.length} attachment(s) sent straight to ${FUNCTION_FOR_JOB_TYPE[jobType]}. Extraction runs in the background; if it fails the job is parked on ingestion_queue rather than lost.`,
   }, 202);
 });
 
