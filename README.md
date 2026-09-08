@@ -70,9 +70,30 @@ Supabase JWT auth.
 **Internal only — service-role key.** `ingest-invoice` and `ingest-nightly-report` cost real
 money per page and write directly into a restaurant's books, so they refuse any caller that
 does not present the service-role key. Their callers are `process-queue` and `upload-scan`,
-both server-side. `email-inbound` is the third internal endpoint; it cannot use a JWT because
-mail providers cannot mint one, so it requires `INBOUND_TOKEN` and refuses to serve at all
-when that secret is unset.
+both server-side.
+
+**Signed webhook — `email-inbound`.** This is the one endpoint the outside world posts to, and
+it cannot use a JWT because mail providers cannot mint one. Resend signs every delivery (Svix
+scheme), and that signature — verified over the raw body, with a five-minute timestamp window
+against replays — is what proves origin. `INBOUND_TOKEN` remains as a fallback for unsigned
+callers and manual replays. With neither configured the endpoint refuses to serve.
+
+> **Required before deploying the current `email-inbound`:** set `RESEND_WEBHOOK_SECRET` to the
+> webhook's `whsec_…` signing secret (Resend dashboard → Webhooks → the `email.received` hook).
+> The webhook is registered as a bare URL with no `?token=`, so signature verification is the
+> only mechanism that will let real deliveries through. Deploying without that secret set
+> returns 503 and inbound invoices stop.
+
+### The live path
+
+    client emails invoices@<receiving domain>
+      → Resend  (email.received webhook, signed)
+      → email-inbound        routes to a client, writes one ingestion_queue job
+      → process-queue        cron-driven worker, drains to a time budget, retries
+      → ingest-invoice       Gemini extraction, bounded page concurrency
+      → Postgres             invoice + line items, mise_audit_invoice, P&L
+
+This is the only path currently wired end to end. The Chef and Cook apps are not deployed.
 
 **Session-gated — `review`.** Gated by `REVIEW_ACCESS_CODE`, which is exchanged at login for
 a signed, expiring session cookie. The page's data access goes through `/review/db/...` on

@@ -41,8 +41,12 @@
  * redeploy, no per-client webhook. ?client_id= still works as an override
  * (always treated as an invoice job in that case).
  *
- * Auth: set an INBOUND_TOKEN secret and pass ?token=... on the webhook URL. The
- * endpoint cannot use verify_jwt because mail providers cannot mint a JWT.
+ * Auth: Resend signs each delivery (Svix). Set RESEND_WEBHOOK_SECRET to the
+ * webhook's whsec_... signing secret and the signature is verified over the raw
+ * body -- that is what proves origin. INBOUND_TOKEN (?token=... or an
+ * x-inbound-token header) remains for unsigned callers and manual replays. With
+ * neither configured the endpoint refuses to serve. It cannot use verify_jwt
+ * because mail providers cannot mint a JWT.
  */
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { encodeBase64 } from 'jsr:@std/encoding@1/base64';
@@ -56,6 +60,50 @@ const RESEND_API = 'https://api.resend.com';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body, null, 2), { status, headers: { 'Content-Type': 'application/json' } });
+
+/**
+ * Resend signs every webhook delivery (Svix scheme). Verifying that signature
+ * is the only thing that actually proves a delivery came from Resend -- a
+ * shared token in the URL proves nothing about origin, and the webhook is
+ * registered as a bare URL with no query string anyway, so a token check on
+ * its own would reject every real delivery.
+ *
+ * Signed content is "<svix-id>.<svix-timestamp>.<raw body>", HMAC-SHA256 with
+ * the base64 secret that follows "whsec_", compared against each v1 signature
+ * in the svix-signature header.
+ */
+const TIMESTAMP_TOLERANCE_S = 300;
+
+async function svixSignatureIsValid(headers, rawBody, secret) {
+  const id = headers.get('svix-id');
+  const timestamp = headers.get('svix-timestamp');
+  const signature = headers.get('svix-signature');
+  if (!id || !timestamp || !signature) return false;
+
+  // Reject replays of an old, legitimately-signed delivery.
+  const age = Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp));
+  if (!Number(timestamp) || age > TIMESTAMP_TOLERANCE_S) {
+    console.warn(`[email] webhook timestamp is ${age}s off; rejecting as a replay.`);
+    return false;
+  }
+
+  const secretBytes = Uint8Array.from(atob(secret.replace(/^whsec_/, '')), (c) => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey('raw', secretBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${id}.${timestamp}.${rawBody}`));
+  const expected = btoa(String.fromCharCode(...new Uint8Array(mac)));
+
+  // The header carries a space-separated list: "v1,<sig> v1,<sig>".
+  for (const part of signature.split(' ')) {
+    const [version, value] = part.split(',');
+    if (version !== 'v1' || !value) continue;
+    if (value.length === expected.length) {
+      let diff = 0;
+      for (let i = 0; i < value.length; i++) diff |= value.charCodeAt(i) ^ expected.charCodeAt(i);
+      if (diff === 0) return true;
+    }
+  }
+  return false;
+}
 
 /** One queue job per email's worth of attachments - pages of one document stay together. */
 async function enqueue(db, clientId, jobType, files) {
@@ -76,6 +124,7 @@ Deno.serve(async (req) => {
     return json({
       ok: true,
       purpose: 'Point a mail provider inbound webhook here; attachments get queued for a worker to process at a controlled pace.',
+      signature_verification: Boolean(Deno.env.get('RESEND_WEBHOOK_SECRET')),
       token_required: Boolean(Deno.env.get('INBOUND_TOKEN')),
       resend_fetch_ready: Boolean(Deno.env.get('RESEND_API_KEY')),
       unwraps_forwarded_mail: true,
@@ -85,17 +134,35 @@ Deno.serve(async (req) => {
   }
   if (req.method !== 'POST') return json({ error: 'POST only.' }, 405);
 
-  const expected = Deno.env.get('INBOUND_TOKEN');
-  // Fail closed. This used to skip the check entirely when the secret was
-  // missing, so a restore or a renamed environment variable silently turned
-  // authentication off on a public endpoint instead of stopping the service.
-  if (!expected) {
-    console.error('[email] INBOUND_TOKEN is not set - refusing inbound mail rather than accepting it unauthenticated.');
-    return json({ error: 'Inbound mail is not configured.' }, 503);
-  }
-  {
+  // The raw body has to be read once, before anything parses it, because the
+  // signature is computed over the exact bytes Resend sent.
+  const rawBody = await req.text();
+
+  const svixSignature = req.headers.get('svix-signature');
+  const webhookSecret = Deno.env.get('RESEND_WEBHOOK_SECRET');
+  const inboundToken = Deno.env.get('INBOUND_TOKEN');
+
+  if (svixSignature) {
+    // A signed delivery: Resend, or something pretending to be it.
+    if (!webhookSecret) {
+      console.error('[email] signed delivery received but RESEND_WEBHOOK_SECRET is not set - refusing rather than trusting it.');
+      return json({ error: 'Inbound mail is not configured.' }, 503);
+    }
+    if (!(await svixSignatureIsValid(req.headers, rawBody, webhookSecret))) {
+      console.error('[email] webhook signature did not verify.');
+      return json({ error: 'Bad signature.' }, 401);
+    }
+  } else if (inboundToken) {
+    // Unsigned callers (a provider that does not sign, or a manual replay)
+    // still need the shared token.
     const given = url.searchParams.get('token') ?? req.headers.get('x-inbound-token');
-    if (given !== expected) return json({ error: 'Bad or missing token.' }, 401);
+    if (given !== inboundToken) return json({ error: 'Bad or missing token.' }, 401);
+  } else {
+    // Neither mechanism configured: fail closed. This used to accept the
+    // request and log a warning, so a restore or a renamed variable silently
+    // turned authentication off on a public endpoint.
+    console.error('[email] no RESEND_WEBHOOK_SECRET and no INBOUND_TOKEN - refusing inbound mail.');
+    return json({ error: 'Inbound mail is not configured.' }, 503);
   }
 
   const contentType = (req.headers.get('content-type') ?? '').toLowerCase();
@@ -103,7 +170,7 @@ Deno.serve(async (req) => {
 
   try {
     if (contentType.includes('application/json')) {
-      const body = await req.json();
+      const body = JSON.parse(rawBody);
       ({ sender, subject, recipients } = describe(body));
       attachments = fromJson(body);
       if (attachments.length === 0) {
@@ -112,17 +179,20 @@ Deno.serve(async (req) => {
         fetchNote = pulled.note;
       }
     } else if (contentType.includes('multipart/form-data')) {
-      const form = await req.formData();
+      // req.formData() is unavailable once the body has been read for the
+      // signature, so re-wrap the bytes we already have.
+      const form = await new Request(req.url, {
+        method: 'POST', headers: { 'content-type': req.headers.get('content-type') }, body: rawBody,
+      }).formData();
       sender = form.get('from') ?? null;
       subject = form.get('subject') ?? null;
       recipients = splitAddresses(form.get('to'));
       attachments = await fromFormData(form);
     } else {
-      const raw = await req.text();
-      sender = raw.match(/^From:\s*(.+)$/im)?.[1]?.trim() ?? null;
-      subject = raw.match(/^Subject:\s*(.+)$/im)?.[1]?.trim() ?? null;
-      recipients = splitAddresses(raw.match(/^To:\s*(.+)$/im)?.[1]);
-      attachments = fromMime(raw);
+      sender = rawBody.match(/^From:\s*(.+)$/im)?.[1]?.trim() ?? null;
+      subject = rawBody.match(/^Subject:\s*(.+)$/im)?.[1]?.trim() ?? null;
+      recipients = splitAddresses(rawBody.match(/^To:\s*(.+)$/im)?.[1]);
+      attachments = fromMime(rawBody);
     }
   } catch (err) {
     console.error('[email] could not parse payload:', err.message);
