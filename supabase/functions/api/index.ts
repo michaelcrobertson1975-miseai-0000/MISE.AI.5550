@@ -47,6 +47,37 @@ const num = (v) => {
   return Number.isFinite(n) ? n : null;
 };
 
+/**
+ * OWNERSHIP CHECK.
+ *
+ * This function used to take whatever restaurant_id the caller sent and hand
+ * back that restaurant's invoices and food costs. CORS is open and verify_jwt
+ * is false, so anyone who learned or guessed a client uuid could read or
+ * modify that restaurant's data. That was survivable while one restaurant
+ * existed and it belonged to the person running the project. It is not
+ * survivable with paying clients' numbers in the same tables.
+ *
+ * Every route now proves the caller holds that restaurant's api_token before
+ * anything is read or written. The token has been sent by the dashboard all
+ * along -- it was simply never checked.
+ */
+async function authorizeClient(supabase, restaurantId, token) {
+  if (!restaurantId) return { denied: json({ success: false, error: 'restaurant_id is required' }, 400) };
+  if (!token) return { denied: json({ success: false, error: 'api_token is required' }, 401) };
+
+  const { data, error } = await supabase
+    .from('clients').select('id, name, status, api_token').eq('id', restaurantId).maybeSingle();
+  if (error) return { denied: json({ success: false, error: error.message }, 500) };
+
+  // Same answer for "no such restaurant" and "wrong token", so this cannot be
+  // used to discover which client ids are real.
+  if (!data || !data.api_token || data.api_token !== token) {
+    console.warn(`[api] denied: restaurant_id=${restaurantId} token_ok=false`);
+    return { denied: json({ success: false, error: 'Not authorized for that restaurant.' }, 403) };
+  }
+  return { client: data };
+}
+
 /** A fee needs no ingredient; everything else is unmapped until one is set. */
 const isMapped = (line) =>
   line.chef_category === 'non_cogs_fee' ? true : Boolean(line.ingredient_id);
@@ -107,9 +138,10 @@ function assess(inv, lines) {
 /* GET /api/invoices/review-queue */
 async function reviewQueue(url) {
   const restaurantId = url.searchParams.get('restaurant_id');
-  if (!restaurantId) return json({ success: false, error: 'restaurant_id is required' }, 400);
-
   const supabase = db();
+  const auth = await authorizeClient(supabase, restaurantId, url.searchParams.get('api_token'));
+  if (auth.denied) return auth.denied;
+
   const { data, error } = await supabase
     .from('invoices')
     .select('*, invoice_line_items(*)')
@@ -161,13 +193,17 @@ async function saveLines(req) {
   if (!invoiceId) return json({ success: false, error: 'invoice_id (or document_id) is required' }, 400);
 
   const supabase = db();
+  const auth = await authorizeClient(supabase, restaurantId, payload.api_token);
+  if (auth.denied) return auth.denied;
 
   // Read the current state first: corrections are only meaningful against what
   // the model originally produced.
   const { data: before, error: readErr } = await supabase
     .from('invoices').select('*, invoice_line_items(*)').eq('id', invoiceId).single();
   if (readErr) return json({ success: false, error: `Invoice not found: ${readErr.message}` }, 404);
-  if (restaurantId && before.client_id !== restaurantId) {
+  // Unconditional now: an authorized caller still may not touch another
+  // restaurant's invoice by passing its id.
+  if (before.client_id !== restaurantId) {
     return json({ success: false, error: 'Invoice does not belong to that restaurant.' }, 403);
   }
 
@@ -344,10 +380,12 @@ async function saveLines(req) {
 /* GET /api/invoices/price-moves */
 async function priceMoves(url) {
   const restaurantId = url.searchParams.get('restaurant_id');
-  if (!restaurantId) return json({ success: false, error: 'restaurant_id is required' }, 400);
   const threshold = Number(url.searchParams.get('threshold') ?? '8');
 
   const supabase = db();
+  const auth = await authorizeClient(supabase, restaurantId, url.searchParams.get('api_token'));
+  if (auth.denied) return auth.denied;
+
   const { data, error } = await supabase
     .from('v_item_price_variance')
     .select('*')
@@ -409,6 +447,7 @@ Deno.serve(async (req) => {
         success: true,
         service: 'miseai chef-app api',
         correction_path: 'mise_apply_correction (line + audit + ingredient + memory + status, one transaction)',
+        auth: 'restaurant_id + api_token checked against clients.api_token on every data route',
         routes: ['GET /api/invoices/review-queue?restaurant_id=',
                  'PATCH /api/invoices/lines',
                  'GET /api/invoices/price-moves?restaurant_id=&threshold='],
