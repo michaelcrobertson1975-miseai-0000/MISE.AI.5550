@@ -62,7 +62,26 @@ docs/                Reserved for project documentation.
 Most client-facing functions (`order-guide`, `beverage-guide`, `product-mix`, `prep-sync-v2`,
 `schedule-sync`, `monthly-audit`, `monthly-audit-v2`) use a custom token check against
 `clients.api_token` (with `clients.status` required to be `active` or `trial`) rather than
-standard Supabase JWT auth.
+standard Supabase JWT auth. Each one resolves the token to a `client_id` and scopes every
+query with it — that token check is the restaurant boundary.
+
+**The anon key is not a database credential in this project.** It is published to every
+browser by design (it is printed in `apps/chef-app/index.html`), so it identifies nobody and
+cannot be filtered on: an RLS policy written `TO anon` is enforceable against no one. As of
+`20260912180000_close_the_anon_data_door`, `anon` and `authenticated` hold no policies and no
+table, sequence or routine grants in `public`, and the default privileges that would grant
+them on future objects are revoked too — so a new table is unreachable from the public API
+until someone deliberately grants it.
+
+That leaves one rule worth checking on any change: **data reaches a browser only through an
+edge function that has already authenticated the caller.** The anon key is used solely to
+*invoke* functions (`upload-scan`, `intake-upload`, `ingest-invoice`), never to read or write
+a table. The Review Queue is the internal, cross-client exception, and it proxies its own
+reads and writes through `review/index.ts` behind the `REVIEW_ACCESS_CODE` cookie, using the
+service-role key server-side.
+
+Anything `SECURITY DEFINER` deserves the same scrutiny as a policy: it bypasses RLS by
+definition, so it must never be left `EXECUTE`-able by `anon` or `authenticated`.
 
 ## Local development
 

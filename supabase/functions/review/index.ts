@@ -6,8 +6,10 @@
  * via a simple cookie. This is an internal ops tool across all clients, not a
  * per-restaurant login -- the code just keeps random visitors out.
  *
- * Reads and writes PostgREST directly from the browser on the same origin, so
- * there is no CORS hop and no second service to keep in sync.
+ * All data access is proxied through this function under the same access-code
+ * cookie, using the service-role key that never leaves the server. The browser
+ * holds no database key at all, so the access code is the only way in -- see
+ * the OPS table below for the exact, whitelisted set of reads and writes.
  *
  * Two things happen on save, and both matter downstream:
  *   1. The corrected values overwrite the line.
@@ -20,8 +22,8 @@
  * Categories come from the pnl_categories table, never from a list in here, so
  * adding TO_GO or splitting PAPER is an INSERT rather than a redeploy.
  */
-const ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFoZm15d29udGR3d2ZhcG93cXBvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzMjg1NTEsImV4cCI6MjEwMzkwNDU1MX0.O0JeiPQVUh2OQCTgTrVdHnkvkl2J9mGeFaLZorOJfVg';
+const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const REST = `${Deno.env.get('SUPABASE_URL')}/rest/v1`;
 
 const ACCESS_CODE = Deno.env.get('REVIEW_ACCESS_CODE');
 const COOKIE_NAME = 'mise_review_auth';
@@ -149,8 +151,18 @@ body{margin:0;background:var(--bg-page);color:var(--text-hero);font:14px/1.5 var
 <div class="corr-wrap" id="wrap"><div class="corr-empty">Loading...</div></div>
 <div class="footnote">Every correction logged &middot; Matches feed your Price Moves tab automatically</div>
 <script>
-var KEY=${JSON.stringify(ANON_KEY)};
-var HDRS={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
+var API=location.pathname;
+async function api(op,body){
+  var r=await fetch(API+'?op='+op,{
+    method:body===undefined?'GET':'POST',
+    headers:{'Content-Type':'application/json'},
+    credentials:'same-origin',
+    body:body===undefined?undefined:JSON.stringify(body)});
+  var txt=await r.text();
+  if(r.status===401)throw new Error('Session expired - reload the page and re-enter the access code.');
+  if(!r.ok)throw new Error(op+': '+txt.slice(0,200));
+  return txt?JSON.parse(txt):null;
+}
 var TOL=0.02;
 var FEE_RE=/FUEL|SURCHARGE|DELIVERY|FREIGHT|SPLIT\s*CASE|MIN(IMUM)?\s*ORDER|PICKUP|CREDIT|DEPOSIT/i;
 
@@ -267,16 +279,10 @@ function severity(inv){
 async function load(){
   wrap.innerHTML='<div class="corr-empty">Loading...</div>';
   try{
-    var r=await fetch('/rest/v1/invoices?select=*,invoice_line_items(*)&status=neq.completed'+
-      '&invoice_line_items.removed_by_review=is.false&order=created_at.desc&limit=50',{headers:HDRS});
-    if(!r.ok)throw new Error('HTTP '+r.status+' '+(await r.text()).slice(0,200));
-    invoices=await r.json();
-
-    var cr=await fetch('/rest/v1/pnl_categories?select=code,label,sort_order&order=sort_order.asc',{headers:HDRS});
-    categories=cr.ok?await cr.json():[];
-
-    var ir=await fetch('/rest/v1/ingredients?select=*&order=name.asc&limit=2000',{headers:HDRS});
-    ingredients=ir.ok?await ir.json():[];
+    var boot=await api('bootstrap');
+    invoices=boot.invoices||[];
+    categories=boot.categories||[];
+    ingredients=boot.ingredients||[];
 
     edits={};removed={};added={};
     render();
@@ -417,11 +423,7 @@ wrap.addEventListener('change',async function(ev){
     var name=prompt('Name this ingredient (it becomes the key Price Moves tracks):');
     if(!name){t.value=cur(t.dataset.inv,t.dataset.line,'ingredient_id','')||'';return;}
     try{
-      var r=await fetch('/rest/v1/ingredients',{method:'POST',
-        headers:Object.assign({},HDRS,{Prefer:'return=representation'}),
-        body:JSON.stringify([{client_id:inv.client_id,name:name.trim()}])});
-      if(!r.ok)throw new Error((await r.text()).slice(0,200));
-      var created=(await r.json())[0];
+      var created=await api('create_ingredient',{client_id:inv.client_id,name:name.trim()});
       ingredients.push(created);
       setEdit(t.dataset.inv,t.dataset.line,'ingredient_id',created.id);
       render();
@@ -501,8 +503,7 @@ async function save(invId){
       });
       if(!payload.item_description)continue;
       if(payload.ingredient_id)payload.matched_at=new Date().toISOString();
-      var ar=await fetch('/rest/v1/invoice_line_items',{method:'POST',headers:HDRS,body:JSON.stringify([payload])});
-      if(!ar.ok)throw new Error('add line: '+(await ar.text()).slice(0,200));
+      await api('add_line',{payload:payload});
       corrections.push({invoice_id:invId,line_item_id:null,field_name:'line_added',
         old_value:null,new_value:payload.item_description,model_used:inv.model_used||null});
     }
@@ -539,8 +540,7 @@ async function save(invId){
     }
 
     if(corrections.length){
-      var cr=await fetch('/rest/v1/invoice_corrections',{method:'POST',headers:HDRS,body:JSON.stringify(corrections)});
-      if(!cr.ok)throw new Error('corrections: '+(await cr.text()).slice(0,200));
+      await api('log_corrections',{corrections:corrections});
     }
 
     hPatch.corrected_at=new Date().toISOString();
@@ -557,12 +557,148 @@ async function save(invId){
 }
 
 async function patchRow(table,id,patch){
-  var r=await fetch('/rest/v1/'+table+'?id=eq.'+id,{method:'PATCH',headers:HDRS,body:JSON.stringify(patch)});
-  if(!r.ok)throw new Error(table+': '+(await r.text()).slice(0,200));
+  await api(table==='invoices'?'patch_invoice':'patch_line',{id:id,patch:patch});
 }
 
 load();
 </script></body></html>`;
+
+/* ═════════════ SERVER-SIDE DATA LAYER ═════════════
+ *
+ * The page used to hold the anon key and talk to PostgREST itself, which meant
+ * the access code only guarded the HTML -- anyone holding the anon key (it is
+ * public by design) could read and rewrite every client's invoices without ever
+ * loading this page. Now the key stays here, behind the same cookie check, and
+ * the browser can only ask for the handful of operations listed below.
+ *
+ * Every writable column is named explicitly. A field that is not on these lists
+ * cannot be written through the Review Queue, whatever the browser sends.
+ */
+const LINE_PATCH_FIELDS = new Set([
+  'item_description', 'vendor_item_code', 'raw_quantity', 'raw_uom', 'raw_unit_price',
+  'line_total', 'pnl_category', 'ingredient_id', 'is_flagged', 'matched_at', 'removed_by_review',
+]);
+const LINE_INSERT_FIELDS = new Set([...LINE_PATCH_FIELDS, 'invoice_id']);
+const INVOICE_PATCH_FIELDS = new Set([
+  'invoice_number', 'invoice_date', 'subtotal', 'grand_total', 'corrected_at', 'correction_count',
+]);
+const CORRECTION_FIELDS = new Set([
+  'invoice_id', 'line_item_id', 'field_name', 'old_value', 'new_value', 'model_used',
+]);
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+class HttpError extends Error {
+  constructor(status, message) { super(message); this.status = status; }
+}
+
+// Ids are interpolated into a PostgREST filter, so anything that is not a uuid
+// is rejected before it can turn into `id=eq.<something else>`.
+function asUuid(v, label) {
+  if (typeof v !== 'string' || !UUID_RE.test(v)) throw new HttpError(400, `${label}: expected a uuid`);
+  return v;
+}
+
+function pick(obj, allowed, label) {
+  if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+    throw new HttpError(400, `${label}: expected an object`);
+  }
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (!allowed.has(k)) throw new HttpError(400, `${label}: "${k}" is not writable from the Review Queue`);
+    out[k] = v;
+  }
+  return out;
+}
+
+async function rest(path, init = {}) {
+  const r = await fetch(`${REST}${path}`, {
+    ...init,
+    headers: {
+      apikey: SERVICE_KEY,
+      Authorization: `Bearer ${SERVICE_KEY}`,
+      'Content-Type': 'application/json',
+      ...(init.headers ?? {}),
+    },
+  });
+  const text = await r.text();
+  if (!r.ok) {
+    throw new HttpError(r.status >= 400 && r.status < 500 ? 400 : 502,
+      `${path.split('?')[0]}: ${text.slice(0, 300)}`);
+  }
+  return text ? JSON.parse(text) : null;
+}
+
+const json = (body, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+
+const OPS = {
+  async bootstrap() {
+    const [invoices, categories, ingredients] = await Promise.all([
+      rest('/invoices?select=*,invoice_line_items(*)&status=neq.completed' +
+           '&invoice_line_items.removed_by_review=is.false&order=created_at.desc&limit=50'),
+      rest('/pnl_categories?select=code,label,sort_order&order=sort_order.asc'),
+      rest('/ingredients?select=*&order=name.asc&limit=2000'),
+    ]);
+    return json({ invoices, categories, ingredients });
+  },
+
+  async create_ingredient(body) {
+    const client_id = asUuid(body.client_id, 'client_id');
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    if (!name) throw new HttpError(400, 'name is required');
+    const rows = await rest('/ingredients', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify([{ client_id, name }]),
+    });
+    return json(rows[0]);
+  },
+
+  async add_line(body) {
+    const payload = pick(body.payload, LINE_INSERT_FIELDS, 'payload');
+    asUuid(payload.invoice_id, 'payload.invoice_id');
+    if (!payload.item_description) throw new HttpError(400, 'item_description is required');
+    await rest('/invoice_line_items', { method: 'POST', body: JSON.stringify([payload]) });
+    return json({ ok: true });
+  },
+
+  async patch_line(body) {
+    const id = asUuid(body.id, 'id');
+    const patch = pick(body.patch, LINE_PATCH_FIELDS, 'patch');
+    if (!Object.keys(patch).length) return json({ ok: true });
+    await rest(`/invoice_line_items?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
+    return json({ ok: true });
+  },
+
+  async patch_invoice(body) {
+    const id = asUuid(body.id, 'id');
+    const patch = pick(body.patch, INVOICE_PATCH_FIELDS, 'patch');
+    if (!Object.keys(patch).length) return json({ ok: true });
+    await rest(`/invoices?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
+    return json({ ok: true });
+  },
+
+  async log_corrections(body) {
+    if (!Array.isArray(body.corrections)) throw new HttpError(400, 'corrections: expected an array');
+    if (!body.corrections.length) return json({ ok: true });
+    if (body.corrections.length > 1000) throw new HttpError(400, 'corrections: too many rows in one save');
+    const rows = body.corrections.map((r) => pick(r, CORRECTION_FIELDS, 'corrections'));
+    await rest('/invoice_corrections', { method: 'POST', body: JSON.stringify(rows) });
+    return json({ ok: true });
+  },
+};
+
+// Compared byte by byte in constant time so a wrong code cannot be narrowed
+// down by how long the answer takes.
+function codeMatches(candidate) {
+  if (typeof candidate !== 'string') return false;
+  const a = new TextEncoder().encode(candidate);
+  const b = new TextEncoder().encode(ACCESS_CODE);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) diff |= (a[i] ?? 0) ^ (b[i] ?? 0);
+  return diff === 0;
+}
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
@@ -573,10 +709,16 @@ Deno.serve(async (req) => {
       { status: 503 }
     );
   }
+  if (!SERVICE_KEY) {
+    return new Response(
+      'Review Queue is locked because SUPABASE_SERVICE_ROLE_KEY is not available to this function.',
+      { status: 503 }
+    );
+  }
 
   const submitted = url.searchParams.get('code');
   if (submitted !== null) {
-    if (submitted === ACCESS_CODE) {
+    if (codeMatches(submitted)) {
       return new Response(null, {
         status: 302,
         headers: {
@@ -588,8 +730,26 @@ Deno.serve(async (req) => {
     return new Response(LOGIN_PAGE(true), { status: 401, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
   }
 
-  const cookieValue = getCookie(req, COOKIE_NAME);
-  if (cookieValue !== ACCESS_CODE) {
+  const authed = codeMatches(getCookie(req, COOKIE_NAME));
+  const op = url.searchParams.get('op');
+
+  // The data layer answers in JSON, so an expired cookie has to come back as a
+  // 401 the page can report -- not as a login page parsed as data.
+  if (op !== null) {
+    if (!authed) return json({ error: 'Not authorized' }, 401);
+    const handler = Object.hasOwn(OPS, op) ? OPS[op] : null;
+    if (!handler) return json({ error: `Unknown operation "${op}"` }, 400);
+    try {
+      const body = req.method === 'POST' ? await req.json() : {};
+      return await handler(body);
+    } catch (err) {
+      const status = err instanceof HttpError ? err.status : 500;
+      if (status >= 500) console.error(`review op ${op} failed:`, err);
+      return json({ error: err.message ?? String(err) }, status);
+    }
+  }
+
+  if (!authed) {
     return new Response(LOGIN_PAGE(false), { status: 401, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
   }
 
