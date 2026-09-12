@@ -2,13 +2,6 @@
 /**
  * MiseAI chef-app API.
  *
- * The app was written against a REST API that never existed. Rather than change
- * the app, this serves the contract it already expects, so wiring it up is one
- * line in the HTML:
- *
- *   const CORR_API_BASE = 'https://qhfmywontdwwfapowqpo.supabase.co/functions/v1';
- *   const CORR_RESTAURANT_ID = '<client uuid>';
- *
  * Routes (the app's own paths, verbatim):
  *   GET   /api/invoices/review-queue?restaurant_id=
  *   PATCH /api/invoices/lines
@@ -23,6 +16,13 @@
  * total given gets its total from mise_manual_line_total() in Postgres, the
  * same place every other invoice number gets checked - not from qty * price
  * in JS. An existing line's printed total is never touched here at all.
+ *
+ * ONE CORRECTION PATH. Edits to an existing line are no longer written with a
+ * direct .update(). They go to mise_apply_correction(), the same function the
+ * ops Review Queue calls, which in one transaction updates the line, writes the
+ * invoice_corrections audit rows, links or creates the ingredient, and upserts
+ * client_item_memory so the NEXT invoice carrying the same vendor + item code
+ * is right without anyone touching it.
  *
  * WHY SAVING MATTERS BEYOND THE ROW: an invoice whose lines are all mapped is
  * set to status='completed', and v_item_price_variance only reads completed
@@ -59,6 +59,8 @@ function toAppLine(li) {
     vendor_sku: li.vendor_item_code ?? '',
     quantity: li.raw_quantity ?? '',
     unit: li.raw_uom ?? '',
+    pack: li.raw_pack ?? '',
+    size: li.raw_size ?? '',
     unit_price: li.raw_unit_price ?? '',
     extended: li.line_total ?? '',
     category: li.chef_category ?? 'uncategorized',
@@ -70,6 +72,10 @@ function toAppLine(li) {
     cost_per_base_unit: li.cost_per_base_unit ?? null,
     base_unit: li.standardized_base_unit ?? null,
     pack_confidence: li.pack_confidence ?? null,
+    // True when this line carries a human-authoritative decision - either made
+    // here, or applied from what the restaurant taught MiseAI on an earlier
+    // invoice. The app uses it to show the line as already settled.
+    human_confirmed: li.category_source === 'human',
     flag_notes: li.flag_notes ?? [],
   };
 }
@@ -98,7 +104,7 @@ function assess(inv, lines) {
   return { severity, kinds, unmapped };
 }
 
-/* ── GET /api/invoices/review-queue ────────────────────────────────────────── */
+/* GET /api/invoices/review-queue */
 async function reviewQueue(url) {
   const restaurantId = url.searchParams.get('restaurant_id');
   if (!restaurantId) return json({ success: false, error: 'restaurant_id is required' }, 400);
@@ -144,7 +150,7 @@ async function reviewQueue(url) {
   return json({ success: true, count: queue.length, queue });
 }
 
-/* ── PATCH /api/invoices/lines ───────────────────────────────────────────── */
+/* PATCH /api/invoices/lines */
 async function saveLines(req) {
   let payload;
   try { payload = await req.json(); }
@@ -193,40 +199,54 @@ async function saveLines(req) {
   // ---- lines ----
   const seen = new Set();
   const sent = Array.isArray(payload.lines) ? payload.lines : [];
+  let rpcCorrections = 0;
+  let remembered = 0;
 
   for (const line of sent) {
     const quantity = num(line.quantity);
     const unitPrice = num(line.unit_price);
     const category = line.category || 'uncategorized';
     const ingredientId = category === 'non_cogs_fee' ? null : (line.ingredient_id || null);
-    // The app doesn't always send `extended`; the invoice's printed total is
-    // the record and must never be silently replaced by qty x price.
-    const row = {
-      invoice_id: invoiceId,
-      item_description: line.description ?? '',
-      vendor_item_code: line.vendor_sku || null,
-      raw_quantity: quantity,
-      raw_uom: line.unit || null,
-      raw_unit_price: unitPrice,
-      chef_category: category,
-      ingredient_id: ingredientId,
-      beverage_type: line.beverage_type || null,
-      beverage_class: line.beverage_class || null,
-      matched_at: ingredientId ? new Date().toISOString() : null,
-    };
 
     if (line.id && existing.has(line.id)) {
-      const prev = existing.get(line.id);
+      // EXISTING LINE -> the one trusted correction path. mise_apply_correction
+      // updates the line, logs the audit rows, links the ingredient, upserts
+      // memory and recomputes status, all in one transaction.
       seen.add(line.id);
-      note(line.id, 'item_description', prev.item_description, row.item_description);
-      note(line.id, 'vendor_item_code', prev.vendor_item_code, row.vendor_item_code);
-      note(line.id, 'raw_quantity', prev.raw_quantity, row.raw_quantity);
-      note(line.id, 'raw_uom', prev.raw_uom, row.raw_uom);
-      note(line.id, 'raw_unit_price', prev.raw_unit_price, row.raw_unit_price);
-      note(line.id, 'chef_category', prev.chef_category, row.chef_category);
-      note(line.id, 'ingredient_id', prev.ingredient_id, row.ingredient_id);
-      const { error } = await supabase.from('invoice_line_items').update(row).eq('id', line.id);
+      const prev = existing.get(line.id);
+      const patch = {};
+      const put = (field, value) => {
+        if (String(prev[field] ?? '') === String(value ?? '')) return;
+        patch[field] = value;
+      };
+      put('item_description', line.description ?? '');
+      put('vendor_item_code', line.vendor_sku || null);
+      put('raw_quantity', quantity);
+      put('raw_unit_price', unitPrice);
+      put('raw_uom', line.unit || null);
+      if (line.pack !== undefined) put('raw_pack', line.pack || null);
+      if (line.size !== undefined) put('raw_size', line.size || null);
+      put('chef_category', category);
+      put('ingredient_id', ingredientId);
+
+      if (Object.keys(patch).length === 0) continue;
+
+      const { data: res, error } = await supabase.rpc('mise_apply_correction', {
+        p_line_item_id: line.id,
+        p_patch: patch,
+        p_ingredient_name: line.ingredient_name || null,
+      });
       if (error) return json({ success: false, error: `Line update failed: ${error.message}` }, 500);
+      rpcCorrections += res?.corrections_logged ?? 0;
+      if (res?.memory_id) remembered += 1;
+
+      // beverage_* are not part of the correction contract; keep them as a
+      // plain attribute write so the chef app's drink fields still save.
+      if (line.beverage_type || line.beverage_class) {
+        await supabase.from('invoice_line_items')
+          .update({ beverage_type: line.beverage_type || null, beverage_class: line.beverage_class || null })
+          .eq('id', line.id);
+      }
     } else {
       // A line the model missed entirely, typed in by the reviewer. There is
       // no printed total to preserve here, so Postgres fills one in from
@@ -235,7 +255,24 @@ async function saveLines(req) {
         p_quantity: quantity, p_unit_price: unitPrice, p_provided: num(line.extended),
       });
       if (totalErr) return json({ success: false, error: `Could not total that line: ${totalErr.message}` }, 500);
-      row.line_total = lineTotal;
+
+      const row = {
+        invoice_id: invoiceId,
+        item_description: line.description ?? '',
+        vendor_item_code: line.vendor_sku || null,
+        raw_quantity: quantity,
+        raw_uom: line.unit || null,
+        raw_pack: line.pack || null,
+        raw_size: line.size || null,
+        raw_unit_price: unitPrice,
+        chef_category: category,
+        category_source: 'human',
+        ingredient_id: ingredientId,
+        beverage_type: line.beverage_type || null,
+        beverage_class: line.beverage_class || null,
+        matched_at: ingredientId ? new Date().toISOString() : null,
+        line_total: lineTotal,
+      };
 
       const { data: created, error } = await supabase.from('invoice_line_items').insert(row).select('id').single();
       if (error) return json({ success: false, error: `Line insert failed: ${error.message}` }, 500);
@@ -273,26 +310,29 @@ async function saveLines(req) {
   const unmapped = (after ?? []).filter((l) => !isMapped(l)).length;
   const resolved = unmapped === 0 && (after ?? []).length > 0;
 
+  // correction_count is SET, not incremented, so it must include what the RPC
+  // already added on top of the header/removal rows counted here.
   const { error: invErr } = await supabase.from('invoices').update({
     ...headerPatch,
     status: resolved ? 'completed' : 'requires_human_review',
     corrected_at: new Date().toISOString(),
-    correction_count: (before.correction_count ?? 0) + corrections.length,
+    correction_count: (before.correction_count ?? 0) + corrections.length + rpcCorrections,
   }).eq('id', invoiceId);
   if (invErr) return json({ success: false, error: `Invoice update failed: ${invErr.message}` }, 500);
 
-  console.log(`[api] saved invoice=${invoiceId} corrections=${corrections.length} unmapped=${unmapped} resolved=${resolved}`);
+  console.log(`[api] saved invoice=${invoiceId} corrections=${corrections.length + rpcCorrections} remembered=${remembered} unmapped=${unmapped} resolved=${resolved}`);
 
   return json({
     success: true,
     resolved,
     lines_unmapped: unmapped,
     lines_total: (after ?? []).length,
-    corrections_logged: corrections.length,
+    corrections_logged: corrections.length + rpcCorrections,
+    items_remembered: remembered,
   });
 }
 
-/* ── GET /api/invoices/price-moves ──────────────────────────────────────────── */
+/* GET /api/invoices/price-moves */
 async function priceMoves(url) {
   const restaurantId = url.searchParams.get('restaurant_id');
   if (!restaurantId) return json({ success: false, error: 'restaurant_id is required' }, 400);
@@ -346,7 +386,7 @@ async function priceMoves(url) {
   });
 }
 
-/* ── router ───────────────────────────────────────────────────────────────────────────── */
+/* router */
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
@@ -359,6 +399,7 @@ Deno.serve(async (req) => {
       return json({
         success: true,
         service: 'miseai chef-app api',
+        correction_path: 'mise_apply_correction (line + audit + ingredient + memory + status, one transaction)',
         routes: ['GET /api/invoices/review-queue?restaurant_id=',
                  'PATCH /api/invoices/lines',
                  'GET /api/invoices/price-moves?restaurant_id=&threshold='],

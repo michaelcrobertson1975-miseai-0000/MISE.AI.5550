@@ -21,7 +21,7 @@ import { parseServiceAccount, getAccessToken } from './googleAuth.js';
 
 const SA_NAMES = ['GCP_SERVICE_ACCOUNT_JSON','GCP_SERVICE_ACCOUNT_KEY','GOOGLE_SERVICE_ACCOUNT_KEY','VERTEX_SERVICE_ACCOUNT_KEY'];
 const KEY_NAMES = ['GEMINI_API_KEY','GOOGLE_API_KEY','GOOGLE_GENAI_API_KEY','GEMINI_KEY','GOOGLE_GEMINI_API_KEY'];
-const MODEL_FALLBACKS = ['gemini-3.7-flash','gemini-3.6-flash','gemini-3.5-flash','gemini-2.5-flash'];
+const MODEL_FALLBACKS = ['gemini-3.8-flash','gemini-3.7-flash','gemini-3.6-flash','gemini-3.5-flash','gemini-2.5-flash'];
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const INVOICE_BUCKET = 'invoice-files';
 const MAX_PAGES = 24;
@@ -281,8 +281,20 @@ Deno.serve(async (req) => {
     const vertex = vertexConfig();
     const results = await Promise.all(pages.map((p) => vertex ? callVertex(p, vertex, models) : callGemini(p, key.value, models)));
     readings = results.map((r) => r.data);
-    modelUsed = results[0].model;
-    routeUsed = vertex ? `vertex:${vertex.project}/${vertex.region}` : 'ai-studio';
+
+for (const reading of readings) {
+  for (const item of (reading.line_items ?? [])) {
+    if ((item.item_description ?? '').toUpperCase().includes('FETA')) {
+      console.log(
+        '[ingest] GEMINI FETA RAW:',
+        JSON.stringify(item)
+      );
+    }
+  }
+}
+
+modelUsed = results[0].model;
+routeUsed = vertex ? `vertex:${vertex.project}/${vertex.region}` : 'ai-studio';
   } catch (err) {
     console.error('[ingest] extraction failed:', err.message);
     return json({ stage: 'extraction', error: err.message }, 502);

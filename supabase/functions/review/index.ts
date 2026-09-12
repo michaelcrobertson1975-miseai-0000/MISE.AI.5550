@@ -6,16 +6,22 @@
  * via a simple cookie. This is an internal ops tool across all clients, not a
  * per-restaurant login -- the code just keeps random visitors out.
  *
- * Reads and writes PostgREST directly from the browser on the same origin, so
- * there is no CORS hop and no second service to keep in sync.
+ * CORRECTIONS GO THROUGH ONE TRUSTED PATH.
+ * Line edits are no longer PATCHed straight at PostgREST. They are sent to
+ * mise_apply_correction(), which in ONE transaction:
+ *   1. updates the line,
+ *   2. writes the invoice_corrections audit rows (unchanged contract),
+ *   3. links or creates the ingredient,
+ *   4. upserts client_item_memory so the NEXT invoice for the same
+ *      vendor + item code gets it right with no human,
+ *   5. recomputes invoice status so a finished invoice leaves this queue.
  *
- * Two things happen on save, and both matter downstream:
- *   1. The corrected values overwrite the line.
- *   2. An invoice_corrections row records what the model had produced, which is
- *      what turns "accuracy improved" into a number instead of a claim.
+ * The browser has no direct access to client_item_memory at all -- the table
+ * grants nothing to anon. Only an owner correction can create memory.
  *
- * Matching a line to an ingredient is what feeds Price Moves: cost_per_base_unit
- * grouped by ingredient_id survives a vendor change, vendor_item_code does not.
+ * PACK and SIZE are editable here now. They are what the pack maths actually
+ * reads, and they are what was wrong on the Feta line: a printed "2/5 LB"
+ * arrived as pack "25" size "LB", which is a 2.5x error in cost per pound.
  *
  * Categories come from the pnl_categories table, never from a list in here, so
  * adding TO_GO or splitting PAPER is an INSERT rather than a redeploy.
@@ -93,7 +99,7 @@ body{margin:0;background:var(--bg-page);color:var(--text-hero);font:14px/1.5 var
 .tab .dot.low{background:var(--text-faint);}
 .footnote{max-width:1100px;margin:0 auto;padding:0 16px 60px;font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-align:center;}
 
-/* ═════ REVIEW QUEUE (invoice line corrections) ═════ */
+/* REVIEW QUEUE (invoice line corrections) */
 .corr-wrap{max-width:1100px;margin:0 auto;padding:24px 16px 40px;}
 .corr-card{background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:6px;margin-bottom:12px;overflow:hidden;box-shadow:0 2px 8px var(--shadow-softer);}
 .corr-card-head{display:flex;align-items:center;gap:14px;padding:14px 18px;cursor:pointer;user-select:none;flex-wrap:wrap;}
@@ -127,6 +133,7 @@ body{margin:0;background:var(--bg-page);color:var(--text-hero);font:14px/1.5 var
 .corr-pill.matched{background:var(--alert-success-wash);color:var(--alert-success);}
 .corr-pill.needsfix{background:var(--alert-danger-wash);color:var(--alert-danger);}
 .corr-pill.excluded{background:rgba(240,244,248,0.10);color:var(--text-faint);}
+.corr-pill.remembered{background:rgba(93,219,160,0.10);color:var(--alert-success);}
 .corr-rm{background:none;border:none;color:var(--alert-danger);cursor:pointer;font-size:16px;line-height:1;padding:0 4px;}
 .corr-total-row td{font-weight:400;background:var(--bg-recessed);}
 .corr-actions{display:flex;gap:10px;align-items:center;padding:14px 18px;border-top:1px solid var(--border-subtle);background:var(--bg-recessed);flex-wrap:wrap;}
@@ -143,16 +150,16 @@ body{margin:0;background:var(--bg-page);color:var(--text-hero);font:14px/1.5 var
 </style></head><body>
 <div class="hdr">
   <h1>Review Queue</h1>
-  <div class="sub">Fix OCR'd invoice lines &middot; saved corrections feed straight into Price Moves</div>
+  <div class="sub">Fix OCR'd invoice lines &middot; a saved correction is remembered for the next invoice from the same vendor and item code</div>
 </div>
 <div class="tabs" id="tabs"></div>
 <div class="corr-wrap" id="wrap"><div class="corr-empty">Loading...</div></div>
-<div class="footnote">Every correction logged &middot; Matches feed your Price Moves tab automatically</div>
+<div class="footnote">Every correction logged &middot; Corrections become reusable data, not a one-off edit</div>
 <script>
 var KEY=${JSON.stringify(ANON_KEY)};
 var HDRS={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
 var TOL=0.02;
-var FEE_RE=/FUEL|SURCHARGE|DELIVERY|FREIGHT|SPLIT\s*CASE|MIN(IMUM)?\s*ORDER|PICKUP|CREDIT|DEPOSIT/i;
+var FEE_RE=/FUEL|SURCHARGE|DELIVERY|FREIGHT|SPLIT\\s*CASE|MIN(IMUM)?\\s*ORDER|PICKUP|CREDIT|DEPOSIT/i;
 
 var wrap=document.getElementById('wrap');
 var tabsEl=document.getElementById('tabs');
@@ -160,14 +167,22 @@ var filter='all';
 var invoices=[],ingredients=[],categories=[],edits={},removed={},added={},open={};
 
 var HEADER_FIELDS=[['invoice_number','Invoice #'],['invoice_date','Date received'],['subtotal','Subtotal ($)'],['grand_total','Total ($)']];
+// raw_pack / raw_size are what the pack maths actually reads. They were not
+// editable before, which is why the Feta line could not be fixed at all.
 var LINE_COLS=[
   ['item_description','Description',230],
   ['vendor_item_code','SKU',90],
   ['raw_quantity','Qty',64],
-  ['raw_uom','Unit',110],
+  ['raw_pack','Pack',64],
+  ['raw_size','Size',80],
+  ['raw_uom','Unit',96],
   ['raw_unit_price','Unit Price',84],
   ['line_total','Extended',90]
 ];
+// Sent to mise_apply_correction. Quantity/price/total are invoice facts and are
+// never remembered; pack/size/unit/category/ingredient are.
+var RPC_FIELDS={item_description:1,vendor_item_code:1,raw_quantity:1,raw_uom:1,raw_pack:1,
+  raw_size:1,raw_unit_price:1,line_total:1,chef_category:1,pnl_category:1,ingredient_id:1};
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function num(v){if(v===''||v==null)return null;var n=Number(v);return isFinite(n)?n:null;}
@@ -320,9 +335,9 @@ function body(inv){
   var alerts='';
   var um=unmatchedCount(inv);
   if(um)alerts+='<div class="corr-alert">&#9888; '+um+' ingredient line'+(um===1?'':'s')+
-    ' could not be matched — pick a category or fix the description below</div>';
-  if(lowConfidence(inv))alerts+='<div class="corr-alert">&#9888; OCR confidence was low on this scan — check quantities and prices carefully</div>';
-  if(inv.flag_reason&&!um&&!lowConfidence(inv))alerts+='<div class="corr-alert">&#9888; '+esc(String(inv.flag_reason).split('\n')[0])+'</div>';
+    ' could not be matched &mdash; pick a category or fix the description below</div>';
+  if(lowConfidence(inv))alerts+='<div class="corr-alert">&#9888; OCR confidence was low on this scan &mdash; check pack, size and quantities carefully</div>';
+  if(inv.flag_reason&&!um&&!lowConfidence(inv))alerts+='<div class="corr-alert">&#9888; '+esc(String(inv.flag_reason).split('\\n')[0])+'</div>';
 
   var hdr='<div class="corr-hdr-grid">'+HEADER_FIELDS.map(function(f){
     return '<div class="corr-hdr-cell"><div class="corr-lbl">'+esc(f[1])+'</div>'+
@@ -334,12 +349,12 @@ function body(inv){
     LINE_COLS.map(function(c){return '<th>'+esc(c[1])+'</th>';}).join('')+
     '<th>Category</th><th>Ingredient ID</th><th>Status</th><th></th></tr></thead>'+
     '<tbody>'+rows+'</tbody><tfoot><tr class="corr-total-row">'+
-    '<td colspan="5">Line total</td><td>'+money(lineSum(inv))+'</td><td colspan="4"></td>'+
+    '<td colspan="'+(LINE_COLS.length-1)+'">Line total</td><td>'+money(lineSum(inv))+'</td><td colspan="4"></td>'+
     '</tr></tfoot></table></div>';
 
   var actions='<div class="corr-actions">'+
     '<button class="corr-btn-secondary" data-add="'+inv.id+'">+ Add line</button>'+
-    '<button class="corr-btn-primary" data-save="'+inv.id+'"'+(isDirty(inv.id)?'':' disabled')+'>Save to Postgres</button>'+
+    '<button class="corr-btn-primary" data-save="'+inv.id+'"'+(isDirty(inv.id)?'':' disabled')+'>Save &amp; remember</button>'+
     '<button class="corr-btn-secondary" data-reset="'+inv.id+'">Discard</button>'+
     '<span class="corr-success" id="msg-'+inv.id+'"></span></div>';
 
@@ -363,26 +378,27 @@ function row(inv,li){
 
   var catCell,ingCell;
   if(fee){
-    catCell='<td><span class="corr-na">n/a — fee</span></td>';
-    ingCell='<td><span class="corr-na">n/a — fee</span></td>';
+    catCell='<td><span class="corr-na">n/a &mdash; fee</span></td>';
+    ingCell='<td><span class="corr-na">n/a &mdash; fee</span></td>';
   }else{
     var cat=cur(inv.id,li.id,'pnl_category',li.pnl_category)||'';
     catCell='<td style="min-width:130px"><select data-inv="'+inv.id+'" data-line="'+li.id+'" data-field="pnl_category"'+(gone?' disabled':'')+'>'+
-      '<option value=""'+(cat?'':' selected')+'>— pick —</option>'+
+      '<option value=""'+(cat?'':' selected')+'>&mdash; pick &mdash;</option>'+
       categories.map(function(c){return '<option value="'+esc(c.code)+'"'+(cat===c.code?' selected':'')+'>'+esc(c.label||c.code)+'</option>';}).join('')+
       '</select></td>';
     var ing=cur(inv.id,li.id,'ingredient_id',li.ingredient_id)||'';
     var mine=ingredients.filter(function(g){return g.client_id===inv.client_id;});
     ingCell='<td style="min-width:170px"><select data-inv="'+inv.id+'" data-line="'+li.id+'" data-field="ingredient_id" data-ing="1"'+(gone?' disabled':'')+'>'+
-      '<option value=""'+(ing?'':' selected')+'>— unmatched —</option>'+
+      '<option value=""'+(ing?'':' selected')+'>&mdash; unmatched &mdash;</option>'+
       mine.map(function(g){return '<option value="'+g.id+'"'+(ing===g.id?' selected':'')+'>'+esc(g.name)+'</option>';}).join('')+
-      '<option value="__new">+ Create new…</option></select></td>';
+      '<option value="__new">+ Create new&hellip;</option></select></td>';
   }
 
   var pill=fee?'<span class="corr-pill excluded">excluded</span>'
     :(m.state==='matched'?'<span class="corr-pill matched">matched</span>'
     :(m.state==='needsfix'?'<span class="corr-pill needsfix">needs fix</span>'
     :'<span class="corr-pill excluded">no line math</span>'));
+  if(!fee&&li.category_source==='human'&&!changed)pill='<span class="corr-pill remembered">remembered</span>';
   if(gone)pill='<span class="corr-pill excluded">removed</span>';
 
   return '<tr class="'+cls+'">'+cells+catCell+ingCell+'<td>'+pill+'</td>'+
@@ -468,20 +484,35 @@ function toggleRemove(invId,lineId){
 function addLine(invId){
   if(!added[invId])added[invId]=[];
   added[invId].push({id:uid(),item_description:'',vendor_item_code:null,raw_quantity:null,
-    raw_uom:null,raw_unit_price:null,line_total:null,pnl_category:null,ingredient_id:null,flag_notes:[]});
+    raw_pack:null,raw_size:null,raw_uom:null,raw_unit_price:null,line_total:null,
+    pnl_category:null,ingredient_id:null,flag_notes:[]});
   open[invId]=true;render();
 }
 
 var NUMERIC={raw_quantity:1,raw_unit_price:1,line_total:1,subtotal:1,tax:1,grand_total:1};
 function coerce(f,v){if(NUMERIC[f])return num(v);return v===''?null:v;}
 
+async function rpc(fn,args){
+  var r=await fetch('/rest/v1/rpc/'+fn,{method:'POST',headers:HDRS,body:JSON.stringify(args)});
+  if(!r.ok)throw new Error(fn+': '+(await r.text()).slice(0,300));
+  return await r.json();
+}
+
+/**
+ * Save order matters.
+ *   1. header edits, removals and brand-new lines -> direct writes + audit rows
+ *   2. edited existing lines -> mise_apply_correction, one call per line
+ * The RPC increments correction_count and sets invoice status itself, so the
+ * header patch is done FIRST and never overwrites what the RPC then records.
+ */
 async function save(invId){
   var inv=invoices.filter(function(i){return i.id===invId;})[0];
   if(!inv)return;
   var msg=document.getElementById('msg-'+invId);
-  msg.textContent='Saving…';
+  msg.textContent='Saving\\u2026';
   var e=edits[invId]||{header:{},lines:{}};
   var corrections=[];
+  var remembered=0,rpcCorrections=0;
   try{
     var hPatch={};
     Object.keys(e.header).forEach(function(f){
@@ -496,7 +527,7 @@ async function save(invId){
     var newRows=(added[invId]||[]);
     for(var n=0;n<newRows.length;n++){
       var nr=newRows[n],payload={invoice_id:invId,is_flagged:false};
-      ['item_description','vendor_item_code','raw_quantity','raw_uom','raw_unit_price','line_total','pnl_category','ingredient_id'].forEach(function(f){
+      ['item_description','vendor_item_code','raw_quantity','raw_pack','raw_size','raw_uom','raw_unit_price','line_total','pnl_category','ingredient_id'].forEach(function(f){
         payload[f]=coerce(f,cur(invId,nr.id,f,nr[f]));
       });
       if(!payload.item_description)continue;
@@ -507,33 +538,12 @@ async function save(invId){
         old_value:null,new_value:payload.item_description,model_used:inv.model_used||null});
     }
 
-    var stored=inv.invoice_line_items||[];
-    var ids=Object.keys(e.lines);
-    for(var i=0;i<ids.length;i++){
-      var lid=ids[i];
-      if(String(lid).indexOf('new-')===0)continue;
-      var li=stored.filter(function(l){return l.id===lid;})[0];
-      if(!li)continue;
-      var patch={},fields=Object.keys(e.lines[lid]);
-      for(var j=0;j<fields.length;j++){
-        var f=fields[j],next=coerce(f,e.lines[lid][f]);
-        if(String(li[f]==null?'':li[f])===String(next==null?'':next))continue;
-        patch[f]=next;
-        corrections.push({invoice_id:invId,line_item_id:lid,field_name:f,
-          old_value:li[f]==null?null:String(li[f]),new_value:next==null?null:String(next),
-          model_used:inv.model_used||null});
-      }
-      if(Object.keys(patch).length){
-        patch.is_flagged=false;
-        if(patch.ingredient_id)patch.matched_at=new Date().toISOString();
-        await patchRow('invoice_line_items',lid,patch);
-      }
-    }
-
     var rm=Object.keys(removed[invId]||{});
     for(var k=0;k<rm.length;k++){
       if(String(rm[k]).indexOf('new-')===0)continue;
-      await patchRow('invoice_line_items',rm[k],{removed_by_review:true,is_flagged:false});
+      var pr=await fetch('/rest/v1/invoice_line_items?id=eq.'+rm[k],{method:'PATCH',headers:HDRS,
+        body:JSON.stringify({removed_by_review:true,is_flagged:false})});
+      if(!pr.ok)throw new Error('remove line: '+(await pr.text()).slice(0,200));
       corrections.push({invoice_id:invId,line_item_id:rm[k],field_name:'removed_by_review',
         old_value:'false',new_value:'true',model_used:inv.model_used||null});
     }
@@ -545,20 +555,40 @@ async function save(invId){
 
     hPatch.corrected_at=new Date().toISOString();
     hPatch.correction_count=(inv.correction_count||0)+corrections.length;
-    await patchRow('invoices',invId,hPatch);
+    var hr=await fetch('/rest/v1/invoices?id=eq.'+invId,{method:'PATCH',headers:HDRS,body:JSON.stringify(hPatch)});
+    if(!hr.ok)throw new Error('invoice: '+(await hr.text()).slice(0,200));
 
-    msg.textContent=corrections.length+' correction'+(corrections.length===1?'':'s')+' saved to Postgres.';
+    // the one trusted correction path
+    var stored=inv.invoice_line_items||[];
+    var ids=Object.keys(e.lines);
+    for(var i=0;i<ids.length;i++){
+      var lid=ids[i];
+      if(String(lid).indexOf('new-')===0)continue;
+      var li=stored.filter(function(l){return l.id===lid;})[0];
+      if(!li)continue;
+      var patch={},fields=Object.keys(e.lines[lid]);
+      for(var j=0;j<fields.length;j++){
+        var f=fields[j];
+        if(!RPC_FIELDS[f])continue;
+        var next=coerce(f,e.lines[lid][f]);
+        if(String(li[f]==null?'':li[f])===String(next==null?'':next))continue;
+        patch[f]=next;
+      }
+      if(!Object.keys(patch).length)continue;
+      var res=await rpc('mise_apply_correction',{p_line_item_id:lid,p_patch:patch});
+      rpcCorrections+=(res&&res.corrections_logged)||0;
+      if(res&&res.memory_id)remembered++;
+    }
+
+    var total=corrections.length+rpcCorrections;
+    msg.textContent=total+' correction'+(total===1?'':'s')+' saved'+
+      (remembered?' \\u00b7 '+remembered+' item'+(remembered===1?'':'s')+' remembered for next time':'')+'.';
     delete edits[invId];delete removed[invId];delete added[invId];
-    setTimeout(load,700);
+    setTimeout(load,900);
   }catch(err){
     msg.textContent='';
     alert('Save failed: '+err.message);
   }
-}
-
-async function patchRow(table,id,patch){
-  var r=await fetch('/rest/v1/'+table+'?id=eq.'+id,{method:'PATCH',headers:HDRS,body:JSON.stringify(patch)});
-  if(!r.ok)throw new Error(table+': '+(await r.text()).slice(0,200));
 }
 
 load();
