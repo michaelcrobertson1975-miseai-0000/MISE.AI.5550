@@ -229,7 +229,16 @@ async function saveLines(req) {
       put('chef_category', category);
       put('ingredient_id', ingredientId);
 
-      if (Object.keys(patch).length === 0) continue;
+      // A reviewer who types ONLY an ingredient name produces an empty patch,
+      // because ingredient_id itself has not changed -- it is still null, and
+      // the name is resolved server-side by mise_apply_correction's
+      // find-or-create. Skipping on an empty patch therefore silently dropped
+      // the one edit that links an unmatched line. Let that case through:
+      // the RPC handles an empty patch fine, creates or links the ingredient,
+      // logs the correction and writes the memory row.
+      const linksIngredientByName =
+        !ingredientId && String(line.ingredient_name ?? '').trim() !== '';
+      if (Object.keys(patch).length === 0 && !linksIngredientByName) continue;
 
       const { data: res, error } = await supabase.rpc('mise_apply_correction', {
         p_line_item_id: line.id,
