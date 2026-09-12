@@ -6,23 +6,42 @@
  * via a simple cookie. This is an internal ops tool across all clients, not a
  * per-restaurant login -- the code just keeps random visitors out.
  *
- * Reads and writes PostgREST directly from the browser on the same origin, so
- * there is no CORS hop and no second service to keep in sync.
+ * CORRECTIONS GO THROUGH ONE TRUSTED PATH.
+ * Line edits are no longer PATCHed straight at PostgREST. They are sent to
+ * mise_apply_correction(), which in ONE transaction:
+ *   1. updates the line,
+ *   2. writes the invoice_corrections audit rows (unchanged contract),
+ *   3. links or creates the ingredient,
+ *   4. upserts client_item_memory so the NEXT invoice for the same
+ *      vendor + item code gets it right with no human,
+ *   5. recomputes invoice status so a finished invoice leaves this queue.
  *
- * Two things happen on save, and both matter downstream:
- *   1. The corrected values overwrite the line.
- *   2. An invoice_corrections row records what the model had produced, which is
- *      what turns "accuracy improved" into a number instead of a claim.
+ * The browser has no direct access to client_item_memory at all -- the table
+ * grants nothing to anon. Only an owner correction can create memory.
  *
- * Matching a line to an ingredient is what feeds Price Moves: cost_per_base_unit
- * grouped by ingredient_id survives a vendor change, vendor_item_code does not.
+ * SECURITY: everything below used to reach PostgREST directly from the
+ * browser using an anon key embedded in this file's own JS -- readable by
+ * anyone who viewed source. invoices/invoice_line_items/ingredients/
+ * invoice_corrections all had `USING (true)` RLS policies with no client_id
+ * filter, so that key gave unrestricted read/write across every restaurant
+ * (locker finding 9ac158b0). The cookie below gated the page; it never
+ * gated the data.
+ *
+ * Fixed the same way as Correct: every remaining direct PostgREST call
+ * (load, new-line insert, line removal, the header patch, the corrections
+ * insert, new-ingredient creation) now goes through this function's own
+ * ?api= proxy, which re-checks the access-code cookie and only then talks to
+ * PostgREST using SUPABASE_SERVICE_ROLE_KEY server-side. No Postgres
+ * credential reaches the browser any more. Behaviour and request shapes are
+ * unchanged -- only where the privileged call happens.
+ *
+ * PACK and SIZE are editable here now. They are what the pack maths actually
+ * reads, and they are what was wrong on the Feta line: a printed "2/5 LB"
+ * arrived as pack "25" size "LB", which is a 2.5x error in cost per pound.
  *
  * Categories come from the pnl_categories table, never from a list in here, so
  * adding TO_GO or splitting PAPER is an INSERT rather than a redeploy.
  */
-const ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFoZm15d29udGR3d2ZhcG93cXBvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzMjg1NTEsImV4cCI6MjEwMzkwNDU1MX0.O0JeiPQVUh2OQCTgTrVdHnkvkl2J9mGeFaLZorOJfVg';
-
 const ACCESS_CODE = Deno.env.get('REVIEW_ACCESS_CODE');
 const COOKIE_NAME = 'mise_review_auth';
 
@@ -36,6 +55,28 @@ function getCookie(req, name) {
     if (k === name) return v;
   }
   return null;
+}
+
+// The only place a Postgres credential is used. Gated on the same
+// access-code cookie that already protects the page.
+async function proxyRest(req, url) {
+  if (getCookie(req, COOKIE_NAME) !== ACCESS_CODE) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+  }
+  const path = url.searchParams.get('api');
+  if (!path) return new Response(JSON.stringify({ error: 'Missing api path' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const upstreamHeaders = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' };
+  if (req.headers.get('prefer')) upstreamHeaders['Prefer'] = req.headers.get('prefer');
+
+  const init = { method: req.method, headers: upstreamHeaders };
+  if (req.method === 'POST' || req.method === 'PATCH') init.body = await req.text();
+
+  const upstream = await fetch(`${supabaseUrl}/rest/v1/${path}`, init);
+  const text = await upstream.text();
+  return new Response(text, { status: upstream.status, headers: { 'Content-Type': 'application/json' } });
 }
 
 const LOGIN_PAGE = (showError) => `<!doctype html>
@@ -93,7 +134,7 @@ body{margin:0;background:var(--bg-page);color:var(--text-hero);font:14px/1.5 var
 .tab .dot.low{background:var(--text-faint);}
 .footnote{max-width:1100px;margin:0 auto;padding:0 16px 60px;font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-align:center;}
 
-/* ═════ REVIEW QUEUE (invoice line corrections) ═════ */
+/* REVIEW QUEUE (invoice line corrections) */
 .corr-wrap{max-width:1100px;margin:0 auto;padding:24px 16px 40px;}
 .corr-card{background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:6px;margin-bottom:12px;overflow:hidden;box-shadow:0 2px 8px var(--shadow-softer);}
 .corr-card-head{display:flex;align-items:center;gap:14px;padding:14px 18px;cursor:pointer;user-select:none;flex-wrap:wrap;}
@@ -127,6 +168,7 @@ body{margin:0;background:var(--bg-page);color:var(--text-hero);font:14px/1.5 var
 .corr-pill.matched{background:var(--alert-success-wash);color:var(--alert-success);}
 .corr-pill.needsfix{background:var(--alert-danger-wash);color:var(--alert-danger);}
 .corr-pill.excluded{background:rgba(240,244,248,0.10);color:var(--text-faint);}
+.corr-pill.remembered{background:rgba(93,219,160,0.10);color:var(--alert-success);}
 .corr-rm{background:none;border:none;color:var(--alert-danger);cursor:pointer;font-size:16px;line-height:1;padding:0 4px;}
 .corr-total-row td{font-weight:400;background:var(--bg-recessed);}
 .corr-actions{display:flex;gap:10px;align-items:center;padding:14px 18px;border-top:1px solid var(--border-subtle);background:var(--bg-recessed);flex-wrap:wrap;}
@@ -143,16 +185,14 @@ body{margin:0;background:var(--bg-page);color:var(--text-hero);font:14px/1.5 var
 </style></head><body>
 <div class="hdr">
   <h1>Review Queue</h1>
-  <div class="sub">Fix OCR'd invoice lines &middot; saved corrections feed straight into Price Moves</div>
+  <div class="sub">Fix OCR'd invoice lines &middot; a saved correction is remembered for the next invoice from the same vendor and item code</div>
 </div>
 <div class="tabs" id="tabs"></div>
 <div class="corr-wrap" id="wrap"><div class="corr-empty">Loading...</div></div>
-<div class="footnote">Every correction logged &middot; Matches feed your Price Moves tab automatically</div>
+<div class="footnote">Every correction logged &middot; Corrections become reusable data, not a one-off edit</div>
 <script>
-var KEY=${JSON.stringify(ANON_KEY)};
-var HDRS={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
 var TOL=0.02;
-var FEE_RE=/FUEL|SURCHARGE|DELIVERY|FREIGHT|SPLIT\s*CASE|MIN(IMUM)?\s*ORDER|PICKUP|CREDIT|DEPOSIT/i;
+var FEE_RE=/FUEL|SURCHARGE|DELIVERY|FREIGHT|SPLIT\\s*CASE|MIN(IMUM)?\\s*ORDER|PICKUP|CREDIT|DEPOSIT/i;
 
 var wrap=document.getElementById('wrap');
 var tabsEl=document.getElementById('tabs');
@@ -160,20 +200,45 @@ var filter='all';
 var invoices=[],ingredients=[],categories=[],edits={},removed={},added={},open={};
 
 var HEADER_FIELDS=[['invoice_number','Invoice #'],['invoice_date','Date received'],['subtotal','Subtotal ($)'],['grand_total','Total ($)']];
+// raw_pack / raw_size are what the pack maths actually reads. They were not
+// editable before, which is why the Feta line could not be fixed at all.
 var LINE_COLS=[
   ['item_description','Description',230],
   ['vendor_item_code','SKU',90],
   ['raw_quantity','Qty',64],
-  ['raw_uom','Unit',110],
+  ['raw_pack','Pack',64],
+  ['raw_size','Size',80],
+  ['raw_uom','Unit',96],
   ['raw_unit_price','Unit Price',84],
   ['line_total','Extended',90]
 ];
+// Sent to mise_apply_correction. Quantity/price/total are invoice facts and are
+// never remembered; pack/size/unit/category/ingredient are.
+var RPC_FIELDS={item_description:1,vendor_item_code:1,raw_quantity:1,raw_uom:1,raw_pack:1,
+  raw_size:1,raw_unit_price:1,line_total:1,chef_category:1,pnl_category:1,ingredient_id:1};
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function num(v){if(v===''||v==null)return null;var n=Number(v);return isFinite(n)?n:null;}
 function money(v){return v==null?'-':'$'+Number(v).toFixed(2);}
 function cents(v){return Math.round(Number(v)*100);}
 function uid(){return 'new-'+Math.random().toString(36).slice(2,10);}
+
+// Same-origin call to THIS edge function's proxy, never PostgREST directly
+// with an exposed key. The access-code cookie travels automatically.
+function q(path,init){
+  return fetch('?api='+encodeURIComponent(path),init).then(function(r){
+    return r.text().then(function(t){
+      if(!r.ok)throw new Error('HTTP '+r.status+' '+t.slice(0,200));
+      return t?JSON.parse(t):null;
+    });
+  });
+}
+function qWrite(path,method,body,prefer){
+  var h={'Content-Type':'application/json'};
+  if(prefer)h['Prefer']=prefer;
+  return q(path,{method:method,headers:h,body:JSON.stringify(body)});
+}
+function rpc(fn,args){return q('rpc/'+fn,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(args)});}
 
 function allLines(inv){return (inv.invoice_line_items||[]).concat(added[inv.id]||[]);}
 function isNew(li){return String(li.id).indexOf('new-')===0;}
@@ -267,16 +332,12 @@ function severity(inv){
 async function load(){
   wrap.innerHTML='<div class="corr-empty">Loading...</div>';
   try{
-    var r=await fetch('/rest/v1/invoices?select=*,invoice_line_items(*)&status=neq.completed'+
-      '&invoice_line_items.removed_by_review=is.false&order=created_at.desc&limit=50',{headers:HDRS});
-    if(!r.ok)throw new Error('HTTP '+r.status+' '+(await r.text()).slice(0,200));
-    invoices=await r.json();
+    invoices=await q('invoices?select=*,invoice_line_items(*)&status=neq.completed'+
+      '&invoice_line_items.removed_by_review=is.false&order=created_at.desc&limit=50');
 
-    var cr=await fetch('/rest/v1/pnl_categories?select=code,label,sort_order&order=sort_order.asc',{headers:HDRS});
-    categories=cr.ok?await cr.json():[];
+    categories=await q('pnl_categories?select=code,label,sort_order&order=sort_order.asc').catch(function(){return [];});
 
-    var ir=await fetch('/rest/v1/ingredients?select=*&order=name.asc&limit=2000',{headers:HDRS});
-    ingredients=ir.ok?await ir.json():[];
+    ingredients=await q('ingredients?select=*&order=name.asc&limit=2000').catch(function(){return [];});
 
     edits={};removed={};added={};
     render();
@@ -320,9 +381,9 @@ function body(inv){
   var alerts='';
   var um=unmatchedCount(inv);
   if(um)alerts+='<div class="corr-alert">&#9888; '+um+' ingredient line'+(um===1?'':'s')+
-    ' could not be matched — pick a category or fix the description below</div>';
-  if(lowConfidence(inv))alerts+='<div class="corr-alert">&#9888; OCR confidence was low on this scan — check quantities and prices carefully</div>';
-  if(inv.flag_reason&&!um&&!lowConfidence(inv))alerts+='<div class="corr-alert">&#9888; '+esc(String(inv.flag_reason).split('\n')[0])+'</div>';
+    ' could not be matched &mdash; pick a category or fix the description below</div>';
+  if(lowConfidence(inv))alerts+='<div class="corr-alert">&#9888; OCR confidence was low on this scan &mdash; check pack, size and quantities carefully</div>';
+  if(inv.flag_reason&&!um&&!lowConfidence(inv))alerts+='<div class="corr-alert">&#9888; '+esc(String(inv.flag_reason).split('\\n')[0])+'</div>';
 
   var hdr='<div class="corr-hdr-grid">'+HEADER_FIELDS.map(function(f){
     return '<div class="corr-hdr-cell"><div class="corr-lbl">'+esc(f[1])+'</div>'+
@@ -334,12 +395,12 @@ function body(inv){
     LINE_COLS.map(function(c){return '<th>'+esc(c[1])+'</th>';}).join('')+
     '<th>Category</th><th>Ingredient ID</th><th>Status</th><th></th></tr></thead>'+
     '<tbody>'+rows+'</tbody><tfoot><tr class="corr-total-row">'+
-    '<td colspan="5">Line total</td><td>'+money(lineSum(inv))+'</td><td colspan="4"></td>'+
+    '<td colspan="'+(LINE_COLS.length-1)+'">Line total</td><td>'+money(lineSum(inv))+'</td><td colspan="4"></td>'+
     '</tr></tfoot></table></div>';
 
   var actions='<div class="corr-actions">'+
     '<button class="corr-btn-secondary" data-add="'+inv.id+'">+ Add line</button>'+
-    '<button class="corr-btn-primary" data-save="'+inv.id+'"'+(isDirty(inv.id)?'':' disabled')+'>Save to Postgres</button>'+
+    '<button class="corr-btn-primary" data-save="'+inv.id+'"'+(isDirty(inv.id)?'':' disabled')+'>Save &amp; remember</button>'+
     '<button class="corr-btn-secondary" data-reset="'+inv.id+'">Discard</button>'+
     '<span class="corr-success" id="msg-'+inv.id+'"></span></div>';
 
@@ -363,26 +424,27 @@ function row(inv,li){
 
   var catCell,ingCell;
   if(fee){
-    catCell='<td><span class="corr-na">n/a — fee</span></td>';
-    ingCell='<td><span class="corr-na">n/a — fee</span></td>';
+    catCell='<td><span class="corr-na">n/a &mdash; fee</span></td>';
+    ingCell='<td><span class="corr-na">n/a &mdash; fee</span></td>';
   }else{
     var cat=cur(inv.id,li.id,'pnl_category',li.pnl_category)||'';
     catCell='<td style="min-width:130px"><select data-inv="'+inv.id+'" data-line="'+li.id+'" data-field="pnl_category"'+(gone?' disabled':'')+'>'+
-      '<option value=""'+(cat?'':' selected')+'>— pick —</option>'+
+      '<option value=""'+(cat?'':' selected')+'>&mdash; pick &mdash;</option>'+
       categories.map(function(c){return '<option value="'+esc(c.code)+'"'+(cat===c.code?' selected':'')+'>'+esc(c.label||c.code)+'</option>';}).join('')+
       '</select></td>';
     var ing=cur(inv.id,li.id,'ingredient_id',li.ingredient_id)||'';
     var mine=ingredients.filter(function(g){return g.client_id===inv.client_id;});
     ingCell='<td style="min-width:170px"><select data-inv="'+inv.id+'" data-line="'+li.id+'" data-field="ingredient_id" data-ing="1"'+(gone?' disabled':'')+'>'+
-      '<option value=""'+(ing?'':' selected')+'>— unmatched —</option>'+
+      '<option value=""'+(ing?'':' selected')+'>&mdash; unmatched &mdash;</option>'+
       mine.map(function(g){return '<option value="'+g.id+'"'+(ing===g.id?' selected':'')+'>'+esc(g.name)+'</option>';}).join('')+
-      '<option value="__new">+ Create new…</option></select></td>';
+      '<option value="__new">+ Create new&hellip;</option></select></td>';
   }
 
   var pill=fee?'<span class="corr-pill excluded">excluded</span>'
     :(m.state==='matched'?'<span class="corr-pill matched">matched</span>'
     :(m.state==='needsfix'?'<span class="corr-pill needsfix">needs fix</span>'
     :'<span class="corr-pill excluded">no line math</span>'));
+  if(!fee&&li.category_source==='human'&&!changed)pill='<span class="corr-pill remembered">remembered</span>';
   if(gone)pill='<span class="corr-pill excluded">removed</span>';
 
   return '<tr class="'+cls+'">'+cells+catCell+ingCell+'<td>'+pill+'</td>'+
@@ -417,11 +479,7 @@ wrap.addEventListener('change',async function(ev){
     var name=prompt('Name this ingredient (it becomes the key Price Moves tracks):');
     if(!name){t.value=cur(t.dataset.inv,t.dataset.line,'ingredient_id','')||'';return;}
     try{
-      var r=await fetch('/rest/v1/ingredients',{method:'POST',
-        headers:Object.assign({},HDRS,{Prefer:'return=representation'}),
-        body:JSON.stringify([{client_id:inv.client_id,name:name.trim()}])});
-      if(!r.ok)throw new Error((await r.text()).slice(0,200));
-      var created=(await r.json())[0];
+      var created=(await qWrite('ingredients','POST',[{client_id:inv.client_id,name:name.trim()}],'return=representation'))[0];
       ingredients.push(created);
       setEdit(t.dataset.inv,t.dataset.line,'ingredient_id',created.id);
       render();
@@ -468,20 +526,34 @@ function toggleRemove(invId,lineId){
 function addLine(invId){
   if(!added[invId])added[invId]=[];
   added[invId].push({id:uid(),item_description:'',vendor_item_code:null,raw_quantity:null,
-    raw_uom:null,raw_unit_price:null,line_total:null,pnl_category:null,ingredient_id:null,flag_notes:[]});
+    raw_pack:null,raw_size:null,raw_uom:null,raw_unit_price:null,line_total:null,
+    pnl_category:null,ingredient_id:null,flag_notes:[]});
   open[invId]=true;render();
 }
 
 var NUMERIC={raw_quantity:1,raw_unit_price:1,line_total:1,subtotal:1,tax:1,grand_total:1};
 function coerce(f,v){if(NUMERIC[f])return num(v);return v===''?null:v;}
 
+async function rpcApply(fn,args){
+  var out=await rpc(fn,args);
+  return out;
+}
+
+/**
+ * Save order matters.
+ *   1. header edits, removals and brand-new lines -> direct writes + audit rows
+ *   2. edited existing lines -> mise_apply_correction, one call per line
+ * The RPC increments correction_count and sets invoice status itself, so the
+ * header patch is done FIRST and never overwrites what the RPC then records.
+ */
 async function save(invId){
   var inv=invoices.filter(function(i){return i.id===invId;})[0];
   if(!inv)return;
   var msg=document.getElementById('msg-'+invId);
-  msg.textContent='Saving…';
+  msg.textContent='Saving\\u2026';
   var e=edits[invId]||{header:{},lines:{}};
   var corrections=[];
+  var remembered=0,rpcCorrections=0;
   try{
     var hPatch={};
     Object.keys(e.header).forEach(function(f){
@@ -496,17 +568,33 @@ async function save(invId){
     var newRows=(added[invId]||[]);
     for(var n=0;n<newRows.length;n++){
       var nr=newRows[n],payload={invoice_id:invId,is_flagged:false};
-      ['item_description','vendor_item_code','raw_quantity','raw_uom','raw_unit_price','line_total','pnl_category','ingredient_id'].forEach(function(f){
+      ['item_description','vendor_item_code','raw_quantity','raw_pack','raw_size','raw_uom','raw_unit_price','line_total','pnl_category','ingredient_id'].forEach(function(f){
         payload[f]=coerce(f,cur(invId,nr.id,f,nr[f]));
       });
       if(!payload.item_description)continue;
       if(payload.ingredient_id)payload.matched_at=new Date().toISOString();
-      var ar=await fetch('/rest/v1/invoice_line_items',{method:'POST',headers:HDRS,body:JSON.stringify([payload])});
-      if(!ar.ok)throw new Error('add line: '+(await ar.text()).slice(0,200));
+      await qWrite('invoice_line_items','POST',[payload]);
       corrections.push({invoice_id:invId,line_item_id:null,field_name:'line_added',
         old_value:null,new_value:payload.item_description,model_used:inv.model_used||null});
     }
 
+    var rm=Object.keys(removed[invId]||{});
+    for(var k=0;k<rm.length;k++){
+      if(String(rm[k]).indexOf('new-')===0)continue;
+      await qWrite('invoice_line_items?id=eq.'+rm[k],'PATCH',{removed_by_review:true,is_flagged:false});
+      corrections.push({invoice_id:invId,line_item_id:rm[k],field_name:'removed_by_review',
+        old_value:'false',new_value:'true',model_used:inv.model_used||null});
+    }
+
+    if(corrections.length){
+      await qWrite('invoice_corrections','POST',corrections);
+    }
+
+    hPatch.corrected_at=new Date().toISOString();
+    hPatch.correction_count=(inv.correction_count||0)+corrections.length;
+    await qWrite('invoices?id=eq.'+invId,'PATCH',hPatch);
+
+    // the one trusted correction path
     var stored=inv.invoice_line_items||[];
     var ids=Object.keys(e.lines);
     for(var i=0;i<ids.length;i++){
@@ -516,49 +604,27 @@ async function save(invId){
       if(!li)continue;
       var patch={},fields=Object.keys(e.lines[lid]);
       for(var j=0;j<fields.length;j++){
-        var f=fields[j],next=coerce(f,e.lines[lid][f]);
+        var f=fields[j];
+        if(!RPC_FIELDS[f])continue;
+        var next=coerce(f,e.lines[lid][f]);
         if(String(li[f]==null?'':li[f])===String(next==null?'':next))continue;
         patch[f]=next;
-        corrections.push({invoice_id:invId,line_item_id:lid,field_name:f,
-          old_value:li[f]==null?null:String(li[f]),new_value:next==null?null:String(next),
-          model_used:inv.model_used||null});
       }
-      if(Object.keys(patch).length){
-        patch.is_flagged=false;
-        if(patch.ingredient_id)patch.matched_at=new Date().toISOString();
-        await patchRow('invoice_line_items',lid,patch);
-      }
+      if(!Object.keys(patch).length)continue;
+      var res=await rpcApply('mise_apply_correction',{p_line_item_id:lid,p_patch:patch});
+      rpcCorrections+=(res&&res.corrections_logged)||0;
+      if(res&&res.memory_id)remembered++;
     }
 
-    var rm=Object.keys(removed[invId]||{});
-    for(var k=0;k<rm.length;k++){
-      if(String(rm[k]).indexOf('new-')===0)continue;
-      await patchRow('invoice_line_items',rm[k],{removed_by_review:true,is_flagged:false});
-      corrections.push({invoice_id:invId,line_item_id:rm[k],field_name:'removed_by_review',
-        old_value:'false',new_value:'true',model_used:inv.model_used||null});
-    }
-
-    if(corrections.length){
-      var cr=await fetch('/rest/v1/invoice_corrections',{method:'POST',headers:HDRS,body:JSON.stringify(corrections)});
-      if(!cr.ok)throw new Error('corrections: '+(await cr.text()).slice(0,200));
-    }
-
-    hPatch.corrected_at=new Date().toISOString();
-    hPatch.correction_count=(inv.correction_count||0)+corrections.length;
-    await patchRow('invoices',invId,hPatch);
-
-    msg.textContent=corrections.length+' correction'+(corrections.length===1?'':'s')+' saved to Postgres.';
+    var total=corrections.length+rpcCorrections;
+    msg.textContent=total+' correction'+(total===1?'':'s')+' saved'+
+      (remembered?' \\u00b7 '+remembered+' item'+(remembered===1?'':'s')+' remembered for next time':'')+'.';
     delete edits[invId];delete removed[invId];delete added[invId];
-    setTimeout(load,700);
+    setTimeout(load,900);
   }catch(err){
     msg.textContent='';
     alert('Save failed: '+err.message);
   }
-}
-
-async function patchRow(table,id,patch){
-  var r=await fetch('/rest/v1/'+table+'?id=eq.'+id,{method:'PATCH',headers:HDRS,body:JSON.stringify(patch)});
-  if(!r.ok)throw new Error(table+': '+(await r.text()).slice(0,200));
 }
 
 load();
@@ -572,6 +638,12 @@ Deno.serve(async (req) => {
       'Review Queue is locked because the REVIEW_ACCESS_CODE secret is not set. Set it in your project to enable access.',
       { status: 503 }
     );
+  }
+
+  // Server-side PostgREST proxy: the only path that ever holds a Postgres
+  // credential. Gated on the access-code cookie, not on request method.
+  if (url.searchParams.has('api')) {
+    return proxyRest(req, url);
   }
 
   const submitted = url.searchParams.get('code');
