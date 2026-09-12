@@ -94,9 +94,24 @@ Deno.serve(async (req) => {
           cost_per_base_unit: p?.cost_per_base_unit ?? null,
           last_invoice_date: p?.last_invoice_date ?? null,
           below_par: ing.par != null && ing.on_hand != null ? ing.on_hand < ing.par : null,
+          // How much to order to hit par, in this ingredient's base_unit.
+          // Purely computed here on every read -- nothing is stored or
+          // recorded, matching Order Food's own rule: the app shows the
+          // number, the human decides and places the order themselves.
+          qty_needed: ing.par != null && ing.on_hand != null ? Math.max(0, ing.par - ing.on_hand) : null,
+          // Approximate dollar cost of that quantity at the last real price
+          // this ingredient was invoiced at. Also purely computed, also not
+          // recorded -- lets the chef sanity-check spend before calling the
+          // vendor, same as qty_needed does for units.
+          qty_needed_dollars: (() => {
+            const qty = ing.par != null && ing.on_hand != null ? Math.max(0, ing.par - ing.on_hand) : null;
+            const cost = p?.cost_per_base_unit ?? null;
+            return qty != null && cost != null ? Math.round(qty * cost * 100) / 100 : null;
+          })(),
         };
       });
-      return json({ success: true, items });
+      const estimated_order_total = items.reduce((sum, it) => sum + (it.qty_needed_dollars ?? 0), 0);
+      return json({ success: true, items, estimated_order_total: Math.round(estimated_order_total * 100) / 100 });
     }
 
     if (req.method === 'POST') {
@@ -119,7 +134,11 @@ Deno.serve(async (req) => {
           .maybeSingle();
         if (error) return json({ success: false, error: error.message }, 500);
         if (!data) return json({ success: false, error: 'That ingredient does not belong to this restaurant.' }, 404);
-        return json({ success: true, item: data });
+        return json({ success: true, item: {
+          ...data,
+          below_par: data.par != null && data.on_hand != null ? data.on_hand < data.par : null,
+          qty_needed: data.par != null && data.on_hand != null ? Math.max(0, data.par - data.on_hand) : null,
+        } });
       }
 
       if (body.action === 'create') {
@@ -132,7 +151,11 @@ Deno.serve(async (req) => {
           .select('id, name, base_unit, pnl_category, order_category, par, on_hand, approved, skipped, on_hand_updated_at')
           .single();
         if (error) return json({ success: false, error: error.message }, 500);
-        return json({ success: true, item: { ...data, vendor: null, last_unit_price: null, last_purchase_unit: null, cost_per_base_unit: null, last_invoice_date: null } }, 201);
+        return json({ success: true, item: {
+          ...data, vendor: null, last_unit_price: null, last_purchase_unit: null, cost_per_base_unit: null, last_invoice_date: null,
+          below_par: data.par != null && data.on_hand != null ? data.on_hand < data.par : null,
+          qty_needed: data.par != null && data.on_hand != null ? Math.max(0, data.par - data.on_hand) : null,
+        } }, 201);
       }
 
       return json({ success: false, error: `Unknown action "${body.action}". Use "update" or "create".` }, 400);
