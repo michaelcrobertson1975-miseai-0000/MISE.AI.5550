@@ -1765,20 +1765,99 @@ td{border-bottom:1px solid transparent;background-image:linear-gradient(var(--bg
 <script>
 const TODAY = new Date();
 
-// ── CONFIG ── templated per restaurant at onboarding, same as Tier 1.
-const RESTAURANT_CODE = 'MISE-0010';
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+// MULTI-TENANT. This dashboard is handed to one restaurant at a time, so the
+// restaurant it shows is NOT baked into the file. It comes from the link:
+//
+//     .../app/?restaurant_id=<client uuid>&token=<that client's api token>
+//
+// Both values are remembered in this browser afterwards, so a client can
+// bookmark the bare address and keep working without the query string.
+//
+// There is deliberately NO fallback restaurant. An unconfigured link shows a
+// setup notice instead of quietly loading whichever restaurant happened to be
+// hardcoded -- showing one client another client's food costs is the single
+// failure this tool must never have.
+const MISE_CFG = (function () {
+  const q = new URLSearchParams(location.search);
+  const pick = function (param, storeKey) {
+    const fromUrl = (q.get(param) || '').trim();
+    if (fromUrl) {
+      try { localStorage.setItem(storeKey, fromUrl); } catch (e) { /* private mode */ }
+      return fromUrl;
+    }
+    try { return (localStorage.getItem(storeKey) || '').trim(); } catch (e) { return ''; }
+  };
+  return {
+    id:    pick('restaurant_id', 'mise_restaurant_id'),
+    token: pick('token',         'mise_api_token'),
+    code:  pick('code',          'mise_restaurant_code'),
+  };
+})();
+
+const RESTAURANT_CODE = MISE_CFG.code || 'MISE-0010';
 const API_BASE = 'https://mise-ai-98230267130.us-west1.run.app';
 const CHAT_ENDPOINT = API_BASE + '/api/recipe-chat';
 
-// ── SUPABASE (wired 2026-09-07) ──
-// This is the real project: Mise.Ai-0000. MISE_RESTAURANT_ID and
-// MISE_API_TOKEN identify this restaurant (Cellar) to every mise-* edge
-// function below -- each one checks the token against clients.api_token
-// server-side before touching any data, so this is safe to ship in the
-// client the same way the CORR_* constants below already are.
+// ── SUPABASE ──
+// The project is fixed; the restaurant is not. Every mise-* edge function is
+// sent restaurant_id + api_token and is expected to check that pair
+// server-side before returning anything.
 const MISE_FUNCTIONS_BASE = 'https://qhfmywontdwwfapowqpo.supabase.co/functions/v1';
-const MISE_RESTAURANT_ID  = '7d1f0a2e-6c44-4b9a-9f31-2ab8e5c07d10';
-const MISE_API_TOKEN      = '8201aeb2-b1ac-4709-aa95-dcb9370fae2d';
+const MISE_RESTAURANT_ID  = MISE_CFG.id;
+const MISE_API_TOKEN      = MISE_CFG.token;
+const MISE_CONFIGURED     = Boolean(MISE_RESTAURANT_ID && MISE_API_TOKEN);
+
+// Nothing loads until a restaurant is identified.
+//
+// Guarding the startup block alone was NOT enough: several modules kick off
+// their own loaders outside it, and they fired with restaurant_id='' . The
+// backend rejects that, so nothing leaked -- but "mostly guarded" is the wrong
+// standard for tenancy, and any module added later would repeat the mistake.
+// So the block is central: with no restaurant identified, no request reaches
+// the backend at all, whoever asks.
+if (!MISE_CONFIGURED) {
+  const miseRealFetch = window.fetch.bind(window);
+  window.fetch = function (input) {
+    const url = typeof input === 'string' ? input : ((input && input.url) || '');
+    if (url.indexOf(MISE_FUNCTIONS_BASE) === 0 || url.indexOf(API_BASE) === 0) {
+      return Promise.resolve(new Response(
+        '{"success":false,"error":"Dashboard is not set up for a restaurant yet."}',
+        { status: 428, headers: { 'Content-Type': 'application/json' } }
+      ));
+    }
+    return miseRealFetch.apply(null, arguments);
+  };
+}
+
+if (!MISE_CONFIGURED) {
+  document.addEventListener('DOMContentLoaded', function () {
+    const gate = document.createElement('div');
+    gate.id = 'miseSetupGate';
+    gate.setAttribute('style', [
+      'position:fixed', 'inset:0', 'z-index:99999',
+      'background:#12151a', 'color:#f0f4f8',
+      'display:flex', 'align-items:center', 'justify-content:center',
+      'padding:24px', 'font:15px/1.6 system-ui,-apple-system,sans-serif',
+    ].join(';'));
+    gate.innerHTML =
+      '<div style="max-width:520px;background:#1a1e26;border:1px solid #2a3038;' +
+      'border-radius:8px;padding:30px">' +
+      '<div style="font-family:ui-monospace,monospace;font-size:13px;letter-spacing:.14em;' +
+      'text-transform:uppercase;color:#fde047;margin-bottom:14px">MiseAI &middot; Not set up</div>' +
+      '<p style="margin:0 0 14px">This dashboard has not been told which restaurant it belongs to, ' +
+      'so it has not loaded anything.</p>' +
+      '<p style="margin:0 0 14px;color:#9aa5b1">Open it using the link from your onboarding email. ' +
+      'It looks like this:</p>' +
+      '<code style="display:block;background:#151920;border:1px solid #2a3038;border-radius:5px;' +
+      'padding:11px;font-size:12px;color:#f0f4f8;word-break:break-all">' +
+      '.../app/?restaurant_id=&lt;your id&gt;&amp;token=&lt;your token&gt;</code>' +
+      '<p style="margin:14px 0 0;color:#6b7684;font-size:13px">Once opened that way, this browser ' +
+      'remembers it and the plain address works from then on.</p>' +
+      '</div>';
+    document.body.appendChild(gate);
+  });
+}
 function miseAuthQS(extra){
   const p = new URLSearchParams({ restaurant_id: MISE_RESTAURANT_ID, api_token: MISE_API_TOKEN, ...(extra||{}) });
   return p.toString();
@@ -2882,8 +2961,13 @@ document.addEventListener('DOMContentLoaded',()=>{
   const wkSub = document.getElementById('wkSubDate');
   if(wkSub) wkSub.textContent='Over Your Morning Cup Of Coffee';
 
-  // Wired 2026-09-07: no more demo/walkthrough data anywhere in this app --
-  // every tab loads straight from the real Supabase project on every load.
+  // No restaurant identified -> load nothing. The setup notice is already on
+  // screen; firing these would send restaurant_id='' at every edge function
+  // and fill the console with 400s for no reason.
+  if (!MISE_CONFIGURED) return;
+
+  // Every tab loads straight from the real Supabase project on every load --
+  // no demo or walkthrough data anywhere in this app.
   loadMix();
   loadInvoicePriceMoves();
   fetchCorrectionsQueue();
