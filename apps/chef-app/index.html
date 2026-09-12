@@ -322,48 +322,54 @@ b,strong{font-weight:400;}
 }
 
 /* ═════ REVIEW QUEUE (invoice line corrections) ═════ */
-.corr-wrap{max-width:1100px;margin:0 auto;padding:24px 16px 80px;}
-.corr-card{background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:6px;margin-bottom:12px;overflow:hidden;box-shadow:0 2px 8px var(--shadow-softer);}
-.corr-card-head{display:flex;align-items:center;gap:14px;padding:14px 18px;cursor:pointer;user-select:none;flex-wrap:wrap;}
-.corr-card-head:hover{background:var(--bg-recessed);}
-.corr-chevron{font-size:11px;color:var(--text-faint);transition:transform .15s;flex-shrink:0;}
-.corr-chevron.open{transform:rotate(90deg);}
-.corr-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
-.corr-dot.high{background:var(--alert-danger);}
-.corr-dot.medium{background:var(--brand-accent);}
-.corr-dot.low{background:var(--text-faint);}
-.corr-meta{flex:1;display:flex;gap:26px;flex-wrap:wrap;align-items:center;}
-.corr-lbl{font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px;}
-.corr-val{font-family:var(--font-mono);font-size:13px;color:var(--text-hero);}
-.corr-badge-unsaved{font-family:var(--font-mono);font-size:10px;color:var(--brand-accent);font-weight:400;letter-spacing:.06em;}
-.corr-badge-saved{font-family:var(--font-mono);font-size:10px;color:var(--alert-success);font-weight:400;letter-spacing:.06em;}
-.corr-alert{background:var(--alert-danger-wash);border:1px solid var(--alert-danger);border-radius:4px;padding:7px 14px;font-size:12px;color:var(--alert-danger);margin:0 18px 10px;font-family:var(--font-serif);}
-.corr-body{border-top:1px solid var(--border-subtle);}
-.corr-hdr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;background:var(--border-subtle);border-bottom:1px solid var(--border-subtle);}
-.corr-hdr-cell{background:var(--bg-card);padding:10px 16px;}
-.corr-hdr-cell input{width:100%;background:var(--bg-recessed);border:1px solid var(--brand-accent);border-radius:3px;padding:5px 7px;font-family:var(--font-mono);font-size:12px;color:var(--text-hero);outline:none;margin-top:4px;box-sizing:border-box;}
-.corr-table-wrap{overflow-x:auto;}
-.corr-table{width:100%;border-collapse:collapse;font-family:var(--font-mono);font-size:12px;}
-.corr-table th{text-align:left;padding:8px 10px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--text-faint);background:var(--bg-recessed);border-bottom:1px solid var(--border-subtle);white-space:nowrap;}
-.corr-table td{padding:6px 10px;border-bottom:1px solid var(--border-subtle);vertical-align:middle;}
-.corr-table input,.corr-table select{width:100%;background:var(--bg-recessed);border:1px solid var(--brand-accent);border-radius:3px;padding:4px 7px;font-family:var(--font-mono);font-size:12px;color:var(--text-hero);outline:none;box-sizing:border-box;}
-.corr-table select{font-family:var(--font-serif);}
-.corr-row-changed{background:rgba(253,224,71,0.06);}
-.corr-row-flagged{background:rgba(255,107,107,0.06);}
-.corr-pill{display:inline-block;font-size:10px;font-weight:400;padding:2px 8px;border-radius:10px;font-family:var(--font-mono);white-space:nowrap;}
-.corr-pill.matched{background:var(--alert-success-wash);color:var(--alert-success);}
-.corr-pill.needsfix{background:var(--alert-danger-wash);color:var(--alert-danger);}
-.corr-pill.excluded{background:rgba(240,244,248,0.10);color:var(--text-faint);}
-.corr-rm{background:none;border:none;color:var(--alert-danger);cursor:pointer;font-size:16px;line-height:1;padding:0 4px;}
-.corr-total-row td{font-weight:400;background:var(--bg-recessed);}
-.corr-actions{display:flex;gap:10px;align-items:center;padding:14px 18px;border-top:1px solid var(--border-subtle);background:var(--bg-recessed);flex-wrap:wrap;}
-.corr-btn-primary{background:var(--brand-accent);color:var(--bg-card);border:none;border-radius:4px;padding:9px 20px;font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:400;cursor:pointer;}
-.corr-btn-primary:hover{background:var(--brand-accent-hover);}
-.corr-btn-primary:disabled{opacity:.4;cursor:not-allowed;}
-.corr-btn-secondary{background:transparent;color:var(--text-hero);border:1px solid var(--border-subtle);border-radius:4px;padding:9px 16px;font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;}
-.corr-btn-secondary:hover{border-color:var(--text-hero);}
-.corr-success{font-family:var(--font-mono);font-size:11px;color:var(--alert-success);}
-.corr-empty{padding:60px 20px;text-align:center;font-family:var(--font-serif);font-style:italic;color:var(--text-muted);font-size:13px;}
+/* ───── CORRECT (invoice line corrections) ───── */
+.crt-wrap{max-width:1100px;margin:0 auto;padding:24px 16px 80px;}
+.crt-back{background:none;border:1px solid var(--border-subtle);color:var(--text-hero);border-radius:4px;padding:7px 13px;font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;}
+.crt-back:hover{border-color:var(--brand-accent);color:var(--brand-accent);}
+.crt-empty{padding:60px 20px;text-align:center;font-family:var(--font-serif);font-style:italic;color:var(--text-muted);font-size:13px;}
+.crt-err{padding:11px 15px;margin-bottom:12px;background:var(--alert-danger-wash);border:1px solid var(--alert-danger);border-radius:5px;font-family:var(--font-mono);font-size:12px;color:var(--alert-danger);}
+
+/* invoice list */
+.crt-list{display:flex;flex-direction:column;gap:8px;margin-top:4px;}
+.crt-inv{display:grid;grid-template-columns:1fr auto;gap:4px 16px;width:100%;text-align:left;background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:6px;padding:13px 15px;cursor:pointer;font:inherit;color:inherit;box-shadow:0 2px 8px var(--shadow-softer);}
+.crt-inv:hover{border-color:var(--brand-accent);}
+.crt-inv b{color:var(--text-hero);font-weight:600;}
+.crt-inv .meta{color:var(--text-muted);font-size:12px;font-family:var(--font-mono);}
+.crt-inv .amt{color:var(--text-hero);font-family:var(--font-mono);font-size:14px;text-align:right;}
+.crt-inv .cnt{color:var(--text-faint);font-size:11px;font-family:var(--font-mono);text-align:right;}
+
+/* line cards */
+.crt-line{background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:6px;margin-top:12px;overflow:hidden;box-shadow:0 2px 8px var(--shadow-softer);}
+.crt-line.done{border-color:var(--alert-success);}
+.crt-lhead{display:flex;align-items:center;gap:9px;padding:11px 15px;border-bottom:1px solid var(--border-subtle);flex-wrap:wrap;}
+.crt-lhead .name{flex:1;min-width:180px;color:var(--text-hero);font-weight:600;font-size:14px;}
+.crt-calc{padding:9px 15px;background:var(--bg-recessed);border-bottom:1px solid var(--border-subtle);font-family:var(--font-mono);font-size:12px;color:var(--text-muted);display:flex;gap:18px;flex-wrap:wrap;}
+.crt-calc b{color:var(--text-hero);font-weight:600;}
+.crt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:11px;padding:13px 15px;}
+.crt-f{display:flex;flex-direction:column;gap:4px;min-width:0;}
+.crt-f label{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--text-faint);font-weight:600;}
+.crt-f input,.crt-f select{width:100%;background:var(--bg-recessed);border:1px solid var(--border-subtle);border-radius:4px;padding:7px 8px;font:13px var(--font-mono);color:var(--text-hero);outline:none;min-width:0;box-sizing:border-box;}
+.crt-f select{font-family:var(--font-serif);}
+.crt-f input:focus,.crt-f select:focus{border-color:var(--brand-accent);}
+.crt-f.changed input,.crt-f.changed select{border-color:var(--brand-accent);background:rgba(253,224,71,0.06);}
+.crt-foot{display:flex;align-items:center;gap:11px;padding:12px 15px;border-top:1px solid var(--border-subtle);background:var(--bg-recessed);flex-wrap:wrap;}
+.crt-save{background:var(--brand-accent);color:var(--bg-card);border:none;border-radius:4px;padding:8px 17px;font-family:var(--font-mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;}
+.crt-save:hover:not(:disabled){background:var(--brand-accent-hover);}
+.crt-save:disabled{opacity:.4;cursor:not-allowed;}
+.crt-undo{background:none;border:1px solid var(--border-subtle);color:var(--text-hero);border-radius:4px;padding:8px 13px;font-family:var(--font-mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;}
+.crt-unsaved{color:var(--brand-accent);font-family:var(--font-mono);font-size:11px;}
+
+.crt-tag{display:inline-block;font-family:var(--font-mono);font-weight:600;font-size:10px;letter-spacing:.07em;padding:3px 8px;border-radius:3px;border:1px solid;white-space:nowrap;}
+.crt-tag.ok{color:var(--alert-success);background:var(--alert-success-wash);border-color:var(--alert-success);}
+.crt-tag.warn{color:var(--brand-accent);background:rgba(253,224,71,0.10);border-color:var(--brand-accent);}
+.crt-tag.stop{color:var(--alert-danger);background:var(--alert-danger-wash);border-color:var(--alert-danger);}
+.crt-tag.mute{color:var(--text-faint);background:var(--bg-recessed);border-color:var(--border-subtle);}
+
+.crt-receipt{padding:11px 15px;background:var(--alert-success-wash);border-top:1px solid var(--alert-success);font-family:var(--font-mono);font-size:12px;color:var(--alert-success);display:flex;flex-direction:column;gap:3px;}
+.crt-receipt .hd{font-weight:600;letter-spacing:.05em;}
+.crt-fail{padding:11px 15px;background:var(--alert-danger-wash);border-top:1px solid var(--alert-danger);font-family:var(--font-mono);font-size:12px;color:var(--alert-danger);}
+.crt-note{color:var(--text-muted);font-size:12px;margin-top:14px;line-height:1.6;}
+.crt-note code{font-family:var(--font-mono);font-size:11px;background:var(--bg-recessed);padding:1px 5px;border-radius:3px;}
 
 /* ═════ ALERTS CENTER (unified feed: Invoices, Price Moves, Prep, Orders) ═════ */
 .alc-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:20px;}
@@ -909,7 +915,7 @@ td{border-bottom:1px solid transparent;background-image:linear-gradient(var(--bg
   <button class="tab"    id="tab-beverage" onclick="showTab('beverage')">Order Beverage</button>
   <button class="tab"    id="tab-mix"     onclick="showTab('mix')">Product Mix</button>
   <button class="tab"    id="tab-inv"     onclick="showTab('inv')">Invoices</button>
-  <button class="tab"    id="tab-corrections" onclick="showTab('corrections')">Review Queue</button>
+  <button class="tab"    id="tab-corrections" onclick="showTab('corrections')">Correct</button>
   <button class="tab"    id="tab-schedule" onclick="showTab('schedule')">Schedule</button>
   <button class="tab"    id="tab-upload"  onclick="showTab('upload')">Upload</button>
 </div>
@@ -1560,20 +1566,18 @@ td{border-bottom:1px solid transparent;background-image:linear-gradient(var(--bg
 
 <!-- ══════ REVIEW QUEUE (invoice line corrections) ══════ -->
 <div class="page" id="page-corrections">
-  <div class="corr-wrap">
+  <div class="crt-wrap">
     <div class="page-head">
       <div>
-        <div class="page-head-title">Review Queue</div>
-        <div class="page-head-sub">Fix OCR'd invoice lines &middot; saved corrections feed straight into Price Moves</div>
+        <div class="page-head-title">Correct</div>
+        <div class="page-head-sub">Fix a line, save it once &middot; MiseAI remembers it for the next invoice from the same vendor</div>
       </div>
+      <button class="crt-back" id="crtBack" style="display:none;" onclick="crtShowList()">&larr; All invoices</button>
     </div>
 
-    <div class="inv-filters" id="corrFilters" style="margin-bottom:16px;"></div>
+    <div id="crtView"><div class="crt-empty">Loading&hellip;</div></div>
 
-    <div id="corrList"></div>
-    <div class="corr-empty" id="corrEmpty" style="display:none;">Queue is clear — new invoices will appear here as they come in.</div>
-
-    <div class="seal-foot"><span class="chain">Every correction logged · Matches feed your Price Moves tab automatically.</span></div>
+    <div class="seal-foot"><span class="chain">Every correction logged &middot; A saved correction becomes memory, not a one-off edit.</span></div>
   </div>
 </div>
 
@@ -1856,7 +1860,10 @@ function alcCollect(){
   // ── Invoice escalations (Review Queue) ──
   (typeof correctionsQueue !== 'undefined' ? correctionsQueue : []).forEach(doc => {
     const sev = doc.top_alert_severity || 'low';
-    const vendor = doc.header?.vendor || doc.vendor || 'Unknown vendor';
+    // api/invoices/review-queue returns vendor_name on the document; the older
+    // doc.vendor / header.vendor spellings never existed, which is why every
+    // escalation used to read "Unknown vendor".
+    const vendor = doc.vendor_name || doc.header?.vendor || doc.vendor || 'Unknown vendor';
     const invNum = doc.header?.invoice_number || doc.invoice_number || '';
     const lineCount = (doc.lines||[]).length;
     items.push({
@@ -1864,7 +1871,15 @@ function alcCollect(){
       source: 'invoice', severity: sev,
       title: `${vendor}${invNum ? ' · Invoice '+invNum : ''}`,
       sub: `${lineCount} line${lineCount===1?'':'s'} need${lineCount===1?'s':''} a look before this posts`,
-      detail: (doc.lines||[]).slice(0,8).map(l => ({ label: l.description || l.vendor_sku || 'Line item', value: l.flag_reason || l.status || 'Flagged for review' })),
+      // Each line carries flag_notes[] (why Postgres flagged it) plus mapped /
+      // pack_confidence. Say the real reason rather than a generic label.
+      detail: (doc.lines||[]).slice(0,8).map(l => ({
+        label: l.description || l.vendor_sku || 'Line item',
+        value: (l.flag_notes && l.flag_notes.length) ? l.flag_notes.join(' ')
+             : (!l.mapped ? 'Not linked to an ingredient yet'
+             : (l.pack_confidence === 'low' ? 'Pack size read with low confidence'
+             : 'Flagged for review')),
+      })),
       goto: 'corrections',
     });
   });
@@ -2518,26 +2533,72 @@ function renderInvoices(){
 }
 
 // ═══════════════════════════════════════
-// REVIEW QUEUE — invoice line corrections
-// Ported from the React correction-app prototype into this vanilla-JS
-// dashboard. Saving a corrected line here writes straight into invLines
-// (the same array the Invoices/Price-Moves tab renders), so a fixed
-// price shows up as a tracked % move without re-entering it.
+// CORRECT — invoice line corrections
+// (replaces the old Review Queue module, removed 2026-09-12)
+//
+// One line, one save. A save goes to the `api` edge function, which routes it
+// through mise_apply_correction() in Postgres: the line is updated, the
+// invoice_corrections audit row is written, the ingredient is linked or
+// created, and client_item_memory is upserted so the NEXT invoice carrying the
+// same vendor + item code arrives already correct. This file does no
+// arithmetic -- every recomputed number comes back from Postgres.
+//
+// ── DO NOT "OPTIMISE" THE PAYLOAD ──────────────────────────────────────────
+// api/invoices/lines treats any existing line MISSING from the payload as
+// deleted: it marks it removed_by_review. And an omitted header nulls
+// invoice_date, subtotal and grand_total. So every save echoes the FULL
+// header and the FULL line set, with only the edited line's values changed.
+// Sending "just the line being saved" would silently wipe the rest of the
+// invoice.
+//
+// ── NAMES THAT MUST NOT CHANGE ─────────────────────────────────────────────
+// correctionsQueue  - read directly by the Urgent ticker and the Alerts Center
+// fetchCorrectionsQueue() - called on boot, and after every save
+// page id 'page-corrections' - every alert's goto lands here
+// Renaming any of them silently breaks the alert wiring.
 // ═══════════════════════════════════════
-const CORR_CATEGORIES = ["uncategorized","produce","protein","dairy","dry_goods","beverage","non_cogs_fee","other"];
-let correctionsQueue = [];
-let corrLoadError = null; // set when the real fetch fails, shown honestly instead of demo data
 
-// NOTE: the app appends '/api/invoices/...' itself below, and the `api`
-// edge function's own router strips a leading /api -- so CORR_API_BASE is
-// the functions root, NOT .../functions/v1/api (that would double up).
-const CORR_API_BASE = MISE_FUNCTIONS_BASE;   // real Supabase edge function, wired 2026-09-07
+// chef_category is the authority Postgres derives pnl_category from
+// (mise_pnl_bucket). These are the values it recognises.
+const CRT_CATEGORIES = [
+  ['uncategorized','— not set —'],
+  ['produce','Produce'],
+  ['protein','Protein'],
+  ['dairy','Dairy'],
+  ['dry_goods','Dry goods'],
+  ['beverage','Beverage'],
+  ['non_cogs_fee','Fee / freight'],
+  ['other','Other / supplies'],
+];
+
+// Editable fields, in the order they appear on a card. line_total is NOT here
+// on purpose: api/invoices/lines does not patch it on an existing line, so an
+// editable box for it would look like it worked and quietly do nothing.
+const CRT_FIELDS = [
+  ['description','Description'],
+  ['vendor_sku','Item code'],
+  ['quantity','Qty'],
+  ['pack','Pack'],
+  ['size','Size'],
+  ['unit','Unit'],
+  ['unit_price','Unit price'],
+];
+
+let correctionsQueue = [];
+let corrLoadError = null;   // set when the real fetch fails, shown honestly instead of demo data
+
+// The app appends '/api/invoices/...' itself below, and the `api` edge
+// function's own router strips a leading /api -- so CORR_API_BASE is the
+// functions root, NOT .../functions/v1/api (that would double up).
+const CORR_API_BASE = MISE_FUNCTIONS_BASE;
 const CORR_RESTAURANT_ID = MISE_RESTAURANT_ID;
-let correctionsNextId = 100;
-let corrFilter = 'all';
-let corrExpanded = {};
-let corrDirty = {};
-let corrSavedDocs = {};
+
+let crtOpenDoc = null;   // document_id currently open, or null for the list
+let crtEdits   = {};     // { lineId: { field: value } }  pending, unsaved
+let crtResults = {};     // { lineId: {ok,…} | {error} }  last save receipt
+
+function crtEsc(s){ const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; }
+function crtMoney(v){ return (v === null || v === undefined || v === '') ? '—' : '$' + Number(v).toFixed(2); }
 
 async function fetchCorrectionsQueue(){
   try{
@@ -2548,76 +2609,170 @@ async function fetchCorrectionsQueue(){
     const res = await fetch(`${CORR_API_BASE}/api/invoices/review-queue?${miseAuthQS()}`);
     const data = await res.json();
     if(!res.ok || !data.success) throw new Error(data.error || 'Failed to load review queue');
-    correctionsQueue = (data.queue || []).map(doc => ({
-      ...doc,
-      lines: doc.lines.map(l => ({ ...l, _changed:false }))
-    }));
+    correctionsQueue = data.queue || [];
     corrLoadError = null;
-    correctionsQueue.forEach(d=>{ if(!(d.document_id in corrExpanded)) corrExpanded[d.document_id] = d.top_alert_severity==='high'; });
-    renderCorrections();
+    // The open invoice may have been completed by the save that triggered this
+    // reload, in which case it is gone from the queue -- fall back to the list.
+    if(crtOpenDoc && !correctionsQueue.some(d => d.document_id === crtOpenDoc)) crtOpenDoc = null;
+    crtRender();
   } catch(e){
-    console.warn('Review Queue live fetch failed:', e);
+    console.warn('Correct live fetch failed:', e);
     corrLoadError = e.message;
-    renderCorrections();
-    showToast('Could not reach invoice API: '+e.message, 'err');
+    crtRender();
+    showToast('Could not reach invoice API: ' + e.message, 'err');
   }
-  if(typeof alcRender==='function') alcRender();
+  // The Alerts Center and the Urgent ticker both read correctionsQueue.
+  // alcRender() redraws the panel AND calls alcRenderTicker(), so this one
+  // call keeps both in step with what was just saved.
+  if(typeof alcRender === 'function') alcRender();
 }
 
-function toggleCorrCard(docId){ corrExpanded[docId] = !corrExpanded[docId]; renderCorrections(); }
-function setCorrFilter(f){ corrFilter = f; renderCorrections(); }
+/* ---------- edit buffer ---------- */
 
-function setCorrLine(docId, idx, field, value){
-  const doc = correctionsQueue.find(d=>d.document_id===docId);
-  if(!doc) return;
-  const line = doc.lines[idx];
-  line[field] = value;
-  line._changed = true;
-  if(field==='quantity' || field==='unit_price'){
-    const qty = field==='quantity' ? parseFloat(value) : parseFloat(line.quantity);
-    const up  = field==='unit_price' ? parseFloat(value) : parseFloat(line.unit_price);
-    if(!isNaN(qty) && !isNaN(up)) line.extended = Math.round(qty*up*100)/100;
+function crtVal(line, field){
+  const e = crtEdits[line.id];
+  if(e && Object.prototype.hasOwnProperty.call(e, field)) return e[field];
+  return line[field] == null ? '' : line[field];
+}
+function crtChanged(line, field){
+  const e = crtEdits[line.id];
+  if(!e || !Object.prototype.hasOwnProperty.call(e, field)) return false;
+  return String(e[field]) !== String(line[field] == null ? '' : line[field]);
+}
+function crtDirty(line){
+  return CRT_FIELDS.concat([['category'],['ingredient_name']])
+    .some(f => crtChanged(line, f[0]));
+}
+function crtSetEdit(lineId, field, value){
+  if(!crtEdits[lineId]) crtEdits[lineId] = {};
+  crtEdits[lineId][field] = value;
+}
+function crtDiscard(lineId){ delete crtEdits[lineId]; crtRender(); }
+
+/* ---------- navigation ---------- */
+
+function crtShowList(){ crtOpenDoc = null; crtEdits = {}; crtResults = {}; crtRender(); }
+function crtOpen(docId){ crtOpenDoc = docId; crtEdits = {}; crtResults = {}; crtRender(); }
+
+/* ---------- render ---------- */
+
+function crtRender(){
+  const view = document.getElementById('crtView');
+  const back = document.getElementById('crtBack');
+  if(!view) return;
+
+  const err = corrLoadError
+    ? `<div class="crt-err">Could not load the queue: ${crtEsc(corrLoadError)}</div>` : '';
+
+  if(!crtOpenDoc){
+    if(back) back.style.display = 'none';
+    if(!correctionsQueue.length){
+      // A failed fetch is NOT an empty queue -- saying "clear" there would be a
+      // lie about the restaurant's invoices. Show the error on its own.
+      view.innerHTML = corrLoadError
+        ? err
+        : '<div class="crt-empty">Queue is clear — new invoices appear here as they come in.</div>';
+      return;
+    }
+    view.innerHTML = err + '<div class="crt-list">' + correctionsQueue.map(crtInvoiceRow).join('') + '</div>';
+    return;
   }
-  if(field==='category' && value!=='uncategorized') line.mapped = true;
-  // ingredient_id is the real mapping signal the PATCH endpoint uses
-  // to fire the "remember this SKU" trigger — setting it here is what
-  // makes a line count as genuinely matched in live mode.
-  if(field==='ingredient_id') line.mapped = value ? true : (line.category==='non_cogs_fee');
-  corrDirty[docId] = true;
-  renderCorrections();
+
+  const doc = correctionsQueue.find(d => d.document_id === crtOpenDoc);
+  if(!doc){ crtShowList(); return; }
+  if(back) back.style.display = '';
+
+  const lines = doc.lines || [];
+  view.innerHTML = err + lines.map(l => crtLineCard(doc, l)).join('') +
+    '<p class="crt-note">Each <b>Save &amp; remember</b> sends one line through ' +
+    '<code>mise_apply_correction</code>. Postgres updates the line, logs the correction, ' +
+    'links the ingredient, stores the memory and recomputes the invoice status in a single ' +
+    'transaction — then this page reloads from the database so what you see is what was saved.</p>';
 }
 
-function setCorrHeader(docId, field, value){
-  const doc = correctionsQueue.find(d=>d.document_id===docId);
-  if(!doc) return;
-  doc.header[field] = value;
-  corrDirty[docId] = true;
+function crtInvoiceRow(doc){
+  const n = (doc.lines || []).length;
+  const sev = doc.top_alert_severity || 'low';
+  const tag = sev === 'high' ? '<span class="crt-tag stop">HIGH</span>'
+            : sev === 'medium' ? '<span class="crt-tag warn">MEDIUM</span>'
+            : '<span class="crt-tag mute">LOW</span>';
+  return '<button class="crt-inv" onclick="crtOpen(' + JSON.stringify(doc.document_id).replace(/"/g,'&quot;') + ')">' +
+    '<div><b>' + crtEsc(doc.vendor_name || 'Unknown vendor') + '</b> ' + tag + '</div>' +
+    '<div class="amt">' + crtMoney(doc.total) + '</div>' +
+    '<div class="meta">' + crtEsc(doc.invoice_number || 'no number') + ' · ' + crtEsc(doc.received_on || 'no date') + '</div>' +
+    '<div class="cnt">' + n + ' line' + (n === 1 ? '' : 's') + '</div>' +
+    '</button>';
 }
 
-function addCorrLine(docId){
-  const doc = correctionsQueue.find(d=>d.document_id===docId);
-  if(!doc) return;
-  doc.lines.push({id:null, description:'', vendor_sku:'', quantity:1, unit:'ea', unit_price:0, extended:0, category:'uncategorized', ingredient_id:null, mapped:false, _changed:true});
-  corrDirty[docId] = true;
-  renderCorrections();
+function crtLineCard(doc, l){
+  const res = crtResults[l.id];
+  const dirty = crtDirty(l);
+
+  let flags = '';
+  if(l.human_confirmed) flags += '<span class="crt-tag ok">CONFIRMED</span>';
+  if(l.pack_confidence === 'low') flags += ' <span class="crt-tag warn">LOW CONFIDENCE</span>';
+  if(!l.mapped) flags += ' <span class="crt-tag mute">UNMATCHED</span>';
+  if((l.flag_notes || []).length) flags += ' <span class="crt-tag stop">FLAGGED</span>';
+
+  const calc = '<div class="crt-calc">' +
+    '<span>base unit <b>' + crtEsc(l.base_unit || '—') + '</b></span>' +
+    '<span>cost/unit <b>' + (l.cost_per_base_unit == null ? '—' : '$' + Number(l.cost_per_base_unit).toFixed(4)) + '</b></span>' +
+    '<span>line total <b>' + crtMoney(l.extended) + '</b></span>' +
+    ((l.flag_notes || []).length ? '<span>' + crtEsc(l.flag_notes.join(' ')) + '</span>' : '') +
+    '</div>';
+
+  const fields = CRT_FIELDS.map(f =>
+    '<div class="crt-f' + (crtChanged(l, f[0]) ? ' changed' : '') + '"><label>' + crtEsc(f[1]) + '</label>' +
+    '<input data-crt-line="' + crtEsc(l.id) + '" data-crt-field="' + f[0] + '" value="' + crtEsc(crtVal(l, f[0])) + '"></div>'
+  ).join('');
+
+  const cat = crtVal(l, 'category') || 'uncategorized';
+  const catSel = '<div class="crt-f' + (crtChanged(l, 'category') ? ' changed' : '') + '"><label>Category</label>' +
+    '<select data-crt-line="' + crtEsc(l.id) + '" data-crt-field="category">' +
+    CRT_CATEGORIES.map(c => '<option value="' + c[0] + '"' + (cat === c[0] ? ' selected' : '') + '>' + crtEsc(c[1]) + '</option>').join('') +
+    '</select></div>';
+
+  const ingSel = '<div class="crt-f' + (crtChanged(l, 'ingredient_name') ? ' changed' : '') + '"><label>' +
+    (l.mapped ? 'Ingredient (linked)' : 'Link ingredient') + '</label>' +
+    '<input data-crt-line="' + crtEsc(l.id) + '" data-crt-field="ingredient_name" placeholder="' +
+    (l.mapped ? 'already linked' : 'type a name') + '" value="' + crtEsc(crtVal(l, 'ingredient_name')) + '"></div>';
+
+  let receipt = '';
+  if(res && res.ok){
+    receipt = '<div class="crt-receipt">' +
+      '<span class="hd">SAVED' + (res.remembered ? ' &amp; REMEMBERED' : '') + '</span>' +
+      '<span>' + res.corrections + ' field' + (res.corrections === 1 ? '' : 's') + ' written to invoice_corrections</span>' +
+      '<span>' + (res.remembered
+        ? res.remembered + ' item' + (res.remembered === 1 ? '' : 's') + ' now remembered for the next invoice'
+        : 'no memory written — nothing here was new knowledge') + '</span>' +
+      '<span>invoice: ' + (res.resolved ? 'fully resolved' : res.unmapped + ' line(s) still unmapped') + '</span>' +
+      '</div>';
+  } else if(res && res.error){
+    receipt = '<div class="crt-fail">Save failed — ' + crtEsc(res.error) + '</div>';
+  }
+
+  return '<div class="crt-line' + (res && res.ok ? ' done' : '') + '">' +
+    '<div class="crt-lhead"><span class="name">' + crtEsc(l.description || '(no description)') + '</span>' + flags + '</div>' +
+    calc +
+    '<div class="crt-grid">' + fields + catSel + ingSel + '</div>' +
+    '<div class="crt-foot">' +
+      '<button class="crt-save" onclick="crtSaveLine(' + JSON.stringify(l.id).replace(/"/g,'&quot;') + ')"' + (dirty ? '' : ' disabled') + '>Save &amp; remember</button>' +
+      (dirty ? '<button class="crt-undo" onclick="crtDiscard(' + JSON.stringify(l.id).replace(/"/g,'&quot;') + ')">Discard</button>' : '') +
+      (dirty ? '<span class="crt-unsaved">unsaved changes</span>' : '') +
+    '</div>' + receipt + '</div>';
 }
 
-function removeCorrLine(docId, idx){
-  const doc = correctionsQueue.find(d=>d.document_id===docId);
-  if(!doc) return;
-  doc.lines.splice(idx,1);
-  corrDirty[docId] = true;
-  renderCorrections();
-}
+/* ---------- save ---------- */
 
-async function saveCorrection(docId){
-  const doc = correctionsQueue.find(d=>d.document_id===docId);
-  if(!doc) return;
+// Build the payload for ONE line's save: the full header, and every line on
+// the invoice, with edits applied ONLY to the line being saved. See the
+// warning at the top of this module -- omitting lines deletes them.
+function crtBuildPayload(doc, savingLineId){
+  const e = crtEdits[savingLineId] || {};
+  const pick = (line, field) =>
+    (line.id === savingLineId && Object.prototype.hasOwnProperty.call(e, field)) ? e[field] : line[field];
 
-  // PATCH /api/invoices/lines. Setting ingredient_id on an existing
-  // (non-deleted) line is what fires the v7 database trigger and makes
-  // this SKU auto-match next time, with zero owner input.
-  const payload = {
+  return {
     restaurant_id: CORR_RESTAURANT_ID,
     api_token: MISE_API_TOKEN,   // ignored by api today; sent so enabling the check is a server-only change
     document_id: doc.document_id,
@@ -2625,160 +2780,101 @@ async function saveCorrection(docId){
     header: {
       invoice_number: doc.header.invoice_number || null,
       received_on: doc.header.received_on || null,
-      subtotal: doc.header.subtotal===''? null : parseFloat(doc.header.subtotal),
-      total: doc.header.total===''? null : parseFloat(doc.header.total),
+      subtotal: doc.header.subtotal === '' ? null : parseFloat(doc.header.subtotal),
+      total: doc.header.total === '' ? null : parseFloat(doc.header.total),
     },
-    lines: doc.lines.map(l => ({
-      id: l.id || null,
-      description: l.description,
-      vendor_sku: l.vendor_sku || null,
-      quantity: parseFloat(l.quantity) || 0,
-      unit: l.unit || 'ea',
-      unit_price: parseFloat(l.unit_price) || 0,
-      category: l.category || 'uncategorized',
-      ingredient_id: l.category==='non_cogs_fee' ? null : (l.ingredient_id || null),
-      beverage_type: l.beverage_type || null,
-      beverage_class: l.beverage_class || null,
-    })),
+    lines: (doc.lines || []).map(l => {
+      const category = pick(l, 'category') || 'uncategorized';
+      const row = {
+        id: l.id,
+        description: pick(l, 'description') ?? '',
+        vendor_sku: pick(l, 'vendor_sku') || null,
+        quantity: pick(l, 'quantity') === '' || pick(l, 'quantity') == null ? null : parseFloat(pick(l, 'quantity')),
+        unit: pick(l, 'unit') || null,
+        pack: pick(l, 'pack') || null,
+        size: pick(l, 'size') || null,
+        unit_price: pick(l, 'unit_price') === '' || pick(l, 'unit_price') == null ? null : parseFloat(pick(l, 'unit_price')),
+        category,
+        ingredient_id: category === 'non_cogs_fee' ? null : (l.ingredient_id || null),
+        beverage_type: l.beverage_type || null,
+        beverage_class: l.beverage_class || null,
+      };
+      // Only the line being saved may create/link an ingredient by name.
+      if(l.id === savingLineId && String(e.ingredient_name || '').trim()){
+        row.ingredient_name = String(e.ingredient_name).trim();
+      }
+      return row;
+    }),
   };
+}
+
+async function crtSaveLine(lineId){
+  const doc = correctionsQueue.find(d => (d.lines || []).some(l => l.id === lineId));
+  if(!doc) return;
+
+  delete crtResults[lineId];
+
   try{
     const res = await fetch(`${CORR_API_BASE}/api/invoices/lines`, {
-      method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(crtBuildPayload(doc, lineId)),
     });
     const data = await res.json();
     if(!res.ok || !data.success) throw new Error(data.error || 'Save failed');
-    corrSavedDocs[docId] = true;
-    corrDirty[docId] = false;
-    renderCorrections();
-    showToast(data.resolved ? 'Saved — invoice fully resolved' : `Saved — ${data.lines_unmapped} line(s) still need mapping`, 'ok');
-    // A resolved invoice is now a completed invoice, which is exactly what
-    // feeds Price Moves -- refresh that tab so the fix shows up there too.
-    if(data.resolved && typeof loadInvoicePriceMoves==='function') loadInvoicePriceMoves();
-    setTimeout(()=>{
-      correctionsQueue = correctionsQueue.filter(d=>d.document_id!==docId);
-      delete corrSavedDocs[docId];
-      renderCorrections();
-    }, 1600);
-  } catch(e){
-    console.error('Save failed:', e);
-    showToast('Save failed — ' + e.message, 'err');
+
+    crtResults[lineId] = {
+      ok: true,
+      corrections: data.corrections_logged || 0,
+      remembered: data.items_remembered || 0,
+      unmapped: data.lines_unmapped || 0,
+      resolved: !!data.resolved,
+    };
+    delete crtEdits[lineId];
+
+    showToast(data.resolved
+      ? 'Saved — invoice fully resolved'
+      : `Saved — ${data.lines_unmapped} line(s) still need mapping`, 'ok');
+
+    // A resolved invoice is a completed invoice, which is what feeds Price
+    // Moves -- refresh that tab so the fix shows up there too.
+    if(data.resolved && typeof loadInvoicePriceMoves === 'function') loadInvoicePriceMoves();
+
+    // Re-read from the database so what is shown is what was actually saved,
+    // and so the ticker and Alerts Center pick the change up.
+    await fetchCorrectionsQueue();
+  } catch(err){
+    console.error('Correct save failed:', err);
+    crtResults[lineId] = { error: err.message };
+    crtRender();
+    showToast('Save failed — ' + err.message, 'err');
   }
 }
 
-function renderCorrections(){
-  const listEl = document.getElementById('corrList');
-  const emptyEl = document.getElementById('corrEmpty');
-  const filtersEl = document.getElementById('corrFilters');
-  if(!listEl) return;
+/* ---------- input wiring (delegated, survives every re-render) ---------- */
 
-  const counts = {
-    all: correctionsQueue.length,
-    high: correctionsQueue.filter(d=>d.top_alert_severity==='high').length,
-    medium: correctionsQueue.filter(d=>d.top_alert_severity==='medium').length,
-    low: correctionsQueue.filter(d=>d.top_alert_severity==='low').length
-  };
-  filtersEl.innerHTML = ['all','high','medium','low'].map(f=>
-    `<button class="inv-filter ${corrFilter===f?'on':''} ${f==='high'?'red':f==='medium'?'amber':''}" onclick="setCorrFilter('${f}')">${f==='all'?'All':f.charAt(0).toUpperCase()+f.slice(1)} <span style="opacity:.6">(${counts[f]})</span></button>`
-  ).join('');
-
-  const filtered = corrFilter==='all' ? correctionsQueue : correctionsQueue.filter(d=>d.top_alert_severity===corrFilter);
-
-  if(!filtered.length){
-    listEl.innerHTML = '';
-    emptyEl.style.display = 'block';
-    emptyEl.textContent = corrLoadError ? ('Could not load the review queue: ' + corrLoadError)
-      : correctionsQueue.length ? 'Nothing matches this filter.'
-      : 'Queue is clear — new invoices will appear here as they come in.';
-    return;
+document.addEventListener('input', function(ev){
+  const t = ev.target;
+  if(!t.dataset || !t.dataset.crtLine) return;
+  crtSetEdit(t.dataset.crtLine, t.dataset.crtField, t.value);
+  // Re-render only the footer state, so typing does not lose focus.
+  const card = t.closest('.crt-line');
+  const doc = correctionsQueue.find(d => (d.lines || []).some(l => l.id === t.dataset.crtLine));
+  const line = doc && (doc.lines || []).find(l => l.id === t.dataset.crtLine);
+  if(card && line){
+    const saveBtn = card.querySelector('.crt-save');
+    if(saveBtn) saveBtn.disabled = !crtDirty(line);
+    const f = t.closest('.crt-f');
+    if(f) f.classList.toggle('changed', crtChanged(line, t.dataset.crtField));
   }
-  emptyEl.style.display = 'none';
+});
 
-  listEl.innerHTML = filtered.map(doc=>{
-    const open = !!corrExpanded[doc.document_id];
-    const saved = !!corrSavedDocs[doc.document_id];
-    const dirty = !!corrDirty[doc.document_id];
-    const unmapped = doc.lines.filter(l=>!l.mapped && l.category!=='non_cogs_fee');
-    const unmappedDollar = unmapped.reduce((s,l)=>s+(parseFloat(l.extended)||0),0);
-    const lineTotal = doc.lines.reduce((s,l)=>s+(parseFloat(l.extended)||0),0);
-
-    const alertsHtml = (open && !saved && doc.open_alert_kinds.length) ? doc.open_alert_kinds.map(kind=>
-      `<div class="corr-alert">⚠ ${
-        kind==='unmapped_ingredients' ? `${unmapped.length} ingredient line${unmapped.length!==1?'s':''} could not be matched — pick a category or fix the description below`
-        : kind==='low_ocr_confidence' ? "OCR confidence was low on this scan — check quantities and prices carefully"
-        : kind.replace(/_/g,' ')
-      }</div>`
-    ).join('') : '';
-
-    const headerFieldsHtml = open ? `
-      <div class="corr-hdr-grid">
-        ${[['invoice_number','Invoice #','text'],['received_on','Date received','date'],['subtotal','Subtotal ($)','number'],['total','Total ($)','number']].map(([key,label,type])=>`
-          <div class="corr-hdr-cell">
-            <div class="corr-lbl">${label}</div>
-            <input type="${type}" value="${doc.header[key] ?? ''}" step="${type==='number'?'0.01':''}" onchange="setCorrHeader('${doc.document_id}','${key}',this.value)">
-          </div>`).join('')}
-      </div>` : '';
-
-    const rowsHtml = open ? doc.lines.map((line,idx)=>{
-      const rowClass = line._changed ? 'corr-row-changed' : (!line.mapped && line.category!=='non_cogs_fee') ? 'corr-row-flagged' : '';
-      return `<tr class="${rowClass}">
-        <td><input value="${(line.description||'').replace(/"/g,'&quot;')}" onchange="setCorrLine('${doc.document_id}',${idx},'description',this.value)"></td>
-        <td><input value="${(line.vendor_sku||'').replace(/"/g,'&quot;')}" onchange="setCorrLine('${doc.document_id}',${idx},'vendor_sku',this.value)"></td>
-        <td style="width:64px;"><input type="number" step="0.01" value="${line.quantity}" onchange="setCorrLine('${doc.document_id}',${idx},'quantity',this.value)"></td>
-        <td style="width:60px;"><input value="${line.unit||''}" onchange="setCorrLine('${doc.document_id}',${idx},'unit',this.value)"></td>
-        <td style="width:84px;"><input type="number" step="0.01" value="${line.unit_price}" onchange="setCorrLine('${doc.document_id}',${idx},'unit_price',this.value)"></td>
-        <td style="width:84px;"><input type="number" step="0.01" value="${line.extended}" onchange="setCorrLine('${doc.document_id}',${idx},'extended',this.value)"></td>
-        <td style="width:140px;">
-          <select onchange="setCorrLine('${doc.document_id}',${idx},'category',this.value)">
-            ${CORR_CATEGORIES.map(c=>`<option value="${c}" ${line.category===c?'selected':''}>${c}</option>`).join('')}
-          </select>
-        </td>
-        <td style="width:150px;">${line.category==='non_cogs_fee'
-          ? '<span style="color:var(--text-faint);font-size:11px;">n/a — fee</span>'
-          : `<input placeholder="uuid" value="${line.ingredient_id||''}" onchange="setCorrLine('${doc.document_id}',${idx},'ingredient_id',this.value)">`
-        }</td>
-        <td style="width:84px;"><span class="corr-pill ${line.category==='non_cogs_fee'?'excluded':line.mapped?'matched':'needsfix'}">${line.category==='non_cogs_fee'?'excluded':line.mapped?'matched':'needs fix'}</span></td>
-        <td style="width:32px;text-align:center;"><button class="corr-rm" onclick="removeCorrLine('${doc.document_id}',${idx})" title="Remove line">×</button></td>
-      </tr>`;
-    }).join('') : '';
-
-    const bodyHtml = open ? `
-      <div class="corr-body">
-        ${headerFieldsHtml}
-        <div class="corr-table-wrap">
-          <table class="corr-table">
-            <thead><tr><th>Description</th><th>SKU</th><th>Qty</th><th>Unit</th><th>Unit Price</th><th>Extended</th><th>Category</th><th>Ingredient ID</th><th>Status</th><th></th></tr></thead>
-            <tbody>
-              ${rowsHtml}
-              <tr class="corr-total-row"><td colspan="5" style="text-align:right;color:var(--text-faint);font-size:11px;">Line total</td><td>$${lineTotal.toFixed(2)}</td><td colspan="4"></td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="corr-actions">
-          <button class="corr-btn-secondary" onclick="addCorrLine('${doc.document_id}')">+ Add line</button>
-          <button class="corr-btn-primary" ${(!dirty || saved) ? 'disabled':''} onclick="saveCorrection('${doc.document_id}')">${saved?'Saved ✓':'Save to Postgres'}</button>
-          ${saved ? '<span class="corr-success">Invoice resolved — removed from queue, price moves updated</span>' : ''}
-        </div>
-      </div>` : '';
-
-    return `<div class="corr-card">
-      <div class="corr-card-head" onclick="toggleCorrCard('${doc.document_id}')">
-        <span class="corr-chevron ${open?'open':''}">▶</span>
-        <span class="corr-dot ${doc.top_alert_severity}" title="${doc.top_alert_severity} severity"></span>
-        <div class="corr-meta">
-          <div><div class="corr-lbl">Vendor</div><div class="corr-val" style="font-weight:400;">${doc.vendor_name}</div></div>
-          <div><div class="corr-lbl">Invoice #</div><div class="corr-val">${doc.invoice_number}</div></div>
-          <div><div class="corr-lbl">Date</div><div class="corr-val">${doc.received_on}</div></div>
-          <div><div class="corr-lbl">Total</div><div class="corr-val">$${doc.total.toFixed(2)}</div></div>
-          <div><div class="corr-lbl">Needs fixing</div><div class="corr-val" style="color:${unmapped.length>0?'var(--alert-danger)':'var(--alert-success)'};font-weight:400;">${unmapped.length} line${unmapped.length!==1?'s':''} · $${unmappedDollar.toFixed(2)}</div></div>
-        </div>
-        ${dirty && !saved ? '<span class="corr-badge-unsaved">UNSAVED</span>' : ''}
-        ${saved ? '<span class="corr-badge-saved">✓ SAVED</span>' : ''}
-      </div>
-      ${alertsHtml}
-      ${bodyHtml}
-    </div>`;
-  }).join('');
-}
+document.addEventListener('change', function(ev){
+  const t = ev.target;
+  if(t.tagName !== 'SELECT' || !t.dataset || !t.dataset.crtLine) return;
+  crtSetEdit(t.dataset.crtLine, t.dataset.crtField, t.value);
+  crtRender();
+});
 
 document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('headerDate').textContent = fmtDate(TODAY);
