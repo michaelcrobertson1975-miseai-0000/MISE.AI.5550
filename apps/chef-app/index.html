@@ -1804,8 +1804,10 @@ const CHAT_ENDPOINT = API_BASE + '/api/recipe-chat';
 // sent restaurant_id + api_token and is expected to check that pair
 // server-side before returning anything.
 const MISE_FUNCTIONS_BASE = 'https://qhfmywontdwwfapowqpo.supabase.co/functions/v1';
-const MISE_RESTAURANT_ID  = MISE_CFG.id;
-const MISE_API_TOKEN      = MISE_CFG.token;
+// Cellar stays the default so this file just works when opened plainly.
+// A link with ?restaurant_id=&token= overrides it for any other restaurant.
+const MISE_RESTAURANT_ID  = MISE_CFG.id    || '7d1f0a2e-6c44-4b9a-9f31-2ab8e5c07d10';
+const MISE_API_TOKEN      = MISE_CFG.token || '8201aeb2-b1ac-4709-aa95-dcb9370fae2d';
 const MISE_CONFIGURED     = Boolean(MISE_RESTAURANT_ID && MISE_API_TOKEN);
 
 // Nothing loads until a restaurant is identified.
