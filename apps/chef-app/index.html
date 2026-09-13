@@ -239,12 +239,6 @@ b,strong{font-weight:400;}
 .wk-action-why{font-family:var(--font-serif);font-size:13px;line-height:1.6;color:var(--text-muted);}
 .wk-foot{background:var(--bg-card);border-top:1px solid var(--border-subtle);padding:18px 28px;text-align:center;font-family:var(--font-mono);font-size:11px;letter-spacing:.16em;color:var(--text-muted);text-transform:uppercase;}
 .wk-foot .chain{color:var(--text-muted);}
-/* Dynamic front page: hide empty slots outright; one quiet state when nothing fired */
-[hidden]{display:none!important;}
-.ov-quiet{background:var(--bg-card);padding:56px 28px 60px;text-align:center;}
-.ov-quiet-icon{font-size:30px;margin-bottom:16px;opacity:.85;}
-.ov-quiet-t{font-family:var(--font-heading);font-size:20px;font-weight:400;color:var(--text-hero);margin-bottom:10px;font-variant:small-caps;letter-spacing:.02em;}
-.ov-quiet-d{font-family:var(--font-serif);font-size:13.5px;color:var(--text-muted);line-height:1.7;max-width:460px;margin:0 auto;}
 
 /* ═════ INVOICES ═════ */
 .inv-wrap{max-width:1100px;margin:0 auto;padding:24px 16px 80px;}
@@ -905,18 +899,15 @@ td{border-bottom:1px solid transparent;background-image:linear-gradient(var(--bg
 
 
 <!-- TABS -->
-<!-- LAUNCH MODE (temporary): only Daily + Upload are shown until real data is in.
-     The hidden tabs below still work fully — to bring one back, just delete the
-     style="display:none" on its button. To restore everything, remove all of them. -->
 <div class="tabs">
   <button class="tab on" id="tab-weekly"  onclick="showTab('weekly')">Daily</button>
-  <button class="tab"    id="tab-prep"    onclick="showTab('prep')" style="display:none">Prep</button>
-  <button class="tab"    id="tab-guide"   onclick="showTab('guide')" style="display:none">Order Food</button>
-  <button class="tab"    id="tab-beverage" onclick="showTab('beverage')" style="display:none">Order Beverage</button>
-  <button class="tab"    id="tab-mix"     onclick="showTab('mix')" style="display:none">Product Mix</button>
-  <button class="tab"    id="tab-inv"     onclick="showTab('inv')" style="display:none">Invoices</button>
-  <button class="tab"    id="tab-corrections" onclick="showTab('corrections')" style="display:none">Review Queue</button>
-  <button class="tab"    id="tab-schedule" onclick="showTab('schedule')" style="display:none">Schedule</button>
+  <button class="tab"    id="tab-prep"    onclick="showTab('prep')">Prep</button>
+  <button class="tab"    id="tab-guide"   onclick="showTab('guide')">Order Food</button>
+  <button class="tab"    id="tab-beverage" onclick="showTab('beverage')">Order Beverage</button>
+  <button class="tab"    id="tab-mix"     onclick="showTab('mix')">Product Mix</button>
+  <button class="tab"    id="tab-inv"     onclick="showTab('inv')">Invoices</button>
+  <button class="tab"    id="tab-corrections" onclick="showTab('corrections')">Review Queue</button>
+  <button class="tab"    id="tab-schedule" onclick="showTab('schedule')">Schedule</button>
   <button class="tab"    id="tab-upload"  onclick="showTab('upload')">Upload</button>
 </div>
 
@@ -938,49 +929,70 @@ td{border-bottom:1px solid transparent;background-image:linear-gradient(var(--bg
       <div class="wk-title">The <em class="metal-gold">Daily</em></div>
       <div class="wk-sub" id="wkSubDate">—</div>
     </div>
-    <!-- QUIET STATE — until a real brief lands, no placeholder walls, no invented numbers -->
-    <div class="ov-quiet" id="wkQuiet">
-      <div class="ov-quiet-icon">☕️</div>
-      <div class="ov-quiet-t">No brief yet</div>
-      <div class="ov-quiet-d">Your first read writes itself the morning after a full day of data lands — what last night was, the one number that moved, and the few things worth doing today. Until then there's nothing to put in front of you, so we don't.</div>
-    </div>
-
-    <!-- DYNAMIC BODY — every section starts hidden; renderBrief() reveals only what the brief filled -->
-    <div class="wk-col" id="wkBody" hidden>
-      <div class="wk-lead" id="wkSecRead" hidden>
+    <div class="wk-col">
+      <div class="wk-lead">
         <div class="wk-lead-h" id="wkHeadline">Yesterday, By The Numbers</div>
-        <div class="wk-lead-callout" id="wkSecGlance" hidden>
+        <div class="wk-lead-callout">
           <div class="wk-lead-callout-lbl">At a glance</div>
-          <div class="wk-lead-callout-txt" id="wkGlance"></div>
+          <div class="wk-lead-callout-txt" id="wkGlance">Your brief will appear here each morning — yesterday's read, plus what to watch today</div>
         </div>
-        <div class="wk-lead-body" id="wkLeadBody"></div>
+        <div class="wk-lead-body" id="wkLeadBody">
+          <p>Good morning, Chef. Once your first full day of data lands, this letter writes itself every morning: what yesterday actually was — sales, labor, food cost, what moved and why — read straight from your own numbers.</p>
+          <p>It closes with what to watch today: the weather and how it usually plays your covers, any invoice price jump waiting to hit your food cost, and anything from yesterday worth staying on top of.</p>
+          <p>One honest read a day, over your morning cup of coffee. No dashboards to babysit.</p>
+        </div>
       </div>
-      <hr class="wk-divider" id="wkDivRead" hidden>
-      <div class="wk-numbers" id="wkSecNumbers" hidden>
+      <hr class="wk-divider">
+      <div class="wk-numbers">
         <div class="wk-num-grid">
-          <div class="wk-num" id="wkTileLabor" hidden><div class="wk-num-lbl">Labor vs Sales</div><div class="wk-num-val" id="wkLaborVal">—</div><div class="wk-num-trend" id="wkLaborTrend">No data</div></div>
-          <div class="wk-num" id="wkTileInv" hidden><div class="wk-num-lbl">Inventory vs Actual</div><div class="wk-num-val" id="wkInvVal">—</div><div class="wk-num-trend" id="wkInvTrend">No data</div></div>
-          <div class="wk-num wk-num-wide" id="wkTilePrime" hidden><div class="wk-num-lbl">Prime Cost <span style="opacity:.6;font-weight:400;">(Food + Labor)</span></div><div class="wk-num-val" id="wkPrimeVal">—</div><div class="wk-num-trend" id="wkPrimeTrend">No data</div></div>
+          <div class="wk-num"><div class="wk-num-lbl">Labor vs Sales</div><div class="wk-num-val">—</div><div class="wk-num-trend">No data</div></div>
+          <div class="wk-num"><div class="wk-num-lbl">Inventory vs Actual</div><div class="wk-num-val">—</div><div class="wk-num-trend">No data</div></div>
+          <div class="wk-num wk-num-wide"><div class="wk-num-lbl">Prime Cost <span style="opacity:.6;font-weight:400;">(Food + Labor)</span></div><div class="wk-num-val">—</div><div class="wk-num-trend">No data</div></div>
         </div>
       </div>
-      <hr class="wk-divider" id="wkDivNumbers" hidden>
-      <div class="wk-cols" id="wkSecMidCols" hidden>
-        <div class="wk-section" id="wkSecNum" hidden><div class="wk-sec-lbl">Number of the Day</div><div class="wk-sec-h" id="wkNumTitle">The One Number That Moved</div><div class="wk-sec-body" id="wkNumBody"></div></div>
-        <div class="wk-section" id="wkSecWx" hidden><div class="wk-sec-lbl">Today's Weather</div><div class="wk-sec-h" id="wkWxTitle">And What It Does To Your Covers</div><div class="wk-sec-body" id="wkWxBody"></div></div>
+      <hr class="wk-divider">
+      <div class="wk-cols">
+        <div class="wk-section"><div class="wk-sec-lbl">Number of the Day</div><div class="wk-sec-h" id="wkNumTitle">The One Number That Moved</div><div class="wk-sec-body" id="wkNumBody"><p>Each brief calls out the single sharpest move in your numbers — an invoice price jump, a labor swing, a dish outselling its prep — so the biggest thing never hides in a table.</p></div></div>
+        <div class="wk-section"><div class="wk-sec-lbl">Today's Weather</div><div class="wk-sec-h" id="wkWxTitle">And What It Does To Your Covers</div><div class="wk-sec-body" id="wkWxBody"><p>The forecast, read the way a chef reads it — how this weather usually plays your volume, and what that means for prep and the pass tonight.</p></div></div>
       </div>
-      <hr class="wk-divider" id="wkDivMid" hidden>
-      <div class="wk-quote" id="wkSecLast" hidden>
+      <hr class="wk-divider">
+      <div class="wk-quote">
         <div class="wk-letter-h">Last Night</div>
-        <div class="wk-letter-body" id="wkLastNight"></div>
+        <div class="wk-letter-body" id="wkLastNight">
+          <p>This is where yesterday's story lives — written from your real numbers, not a template. What the night was, which dishes moved, where labor ran heavy or light, and the one thing worth doing about it today.</p>
+          <p>It reads like a chef talking to a chef, because that's exactly what it is.</p>
+        </div>
         <div class="wk-quote-c">— MISEai · Exec Chef</div>
       </div>
-      <hr class="wk-divider" id="wkDivLast" hidden>
-      <div class="wk-actions" id="wkSecActions" hidden>
-        <div class="wk-actions-h">Action For Today</div><div id="wkActions"></div>
+      <hr class="wk-divider">
+      <div class="wk-actions">
+        <div class="wk-actions-h">Action For Today</div><div id="wkActions">
+        <div class="wk-action-item">
+          <div class="wk-action-num">1</div>
+          <div class="wk-action-body">
+            <div class="wk-action-title">Your first three actions land with your first brief</div>
+            <div class="wk-action-why">Every morning this section gives you exactly three things worth doing today — pulled from yesterday's numbers, ranked by what they're costing you. Never a to-do list, never more than three.</div>
+          </div>
+        </div>
+        <div class="wk-action-item">
+          <div class="wk-action-num">2</div>
+          <div class="wk-action-body">
+            <div class="wk-action-title">Watch Today flags anything carrying into service</div>
+            <div class="wk-action-why">A price jump, a short prep, a station that needs an eye — if yesterday's numbers point to something today, it shows up here before service starts.</div>
+          </div>
+        </div>
+        <div class="wk-action-item">
+          <div class="wk-action-num">3</div>
+          <div class="wk-action-body">
+            <div class="wk-action-title">One number gets called out as the sharpest move</div>
+            <div class="wk-action-why">Whether it's an invoice, a labor swing, or a dish outselling its prep, the single biggest thing in your numbers never hides in a table.</div>
+          </div>
+        </div>
+        </div>
       </div>
-      <div class="wk-cols" id="wkSecWatchCols" hidden>
-        <div class="wk-section" id="wkSecWatch" hidden><div class="wk-sec-lbl">Watch Today</div><div class="wk-sec-h" id="wkWatchTitle">Before It Costs You</div><div class="wk-sec-body" id="wkWatchBody"></div></div>
-        <div class="wk-section" id="wkSecStick" hidden><div class="wk-sec-lbl">Stick With You</div><div class="wk-sec-h" id="wkStickTitle">One Thought Worth Keeping</div><div class="wk-sec-body" id="wkStickBody"></div></div>
+      <div class="wk-cols">
+        <div class="wk-section"><div class="wk-sec-lbl">Watch Today</div><div class="wk-sec-h" id="wkWatchTitle">Before It Costs You</div><div class="wk-sec-body" id="wkWatchBody"><p>Anything from yesterday that carries into today — a price jump about to hit food cost, prep that ran short, a station that needs an eye — lands here before service, not after.</p></div></div>
+        <div class="wk-section"><div class="wk-sec-lbl">Stick With You</div><div class="wk-sec-h" id="wkStickTitle">One Thought Worth Keeping</div><div class="wk-sec-body" id="wkStickBody"><p>Every brief ends with one idea from your own numbers worth carrying past today — the pattern behind the day, not just the day.</p></div></div>
       </div>
     </div>
     <div class="wk-foot"><span class="chain">One honest read · Every morning · Your numbers, not a template.</span></div>
@@ -1806,12 +1818,6 @@ function showTab(id){
   document.getElementById('tab-'+id).classList.add('on');
   window.scrollTo({top:0, behavior:'smooth'});
 }
-
-// LAUNCH MODE: a tab is "live" only if its button is actually shown (not hidden
-// with style="display:none"). We use this to auto-load data only for visible
-// tabs, so hidden tabs make no failing requests and fire no error popups on the
-// front page. Un-hide a tab's button and its data loads again on the next refresh.
-function tabVisible(id){ const b = document.getElementById('tab-'+id); return !!b && b.style.display !== 'none'; }
 
 // Floating Alerts panel — mirrors miseToggle()'s open/close pattern.
 function alcToggleFab(){
@@ -2745,11 +2751,11 @@ document.addEventListener('DOMContentLoaded',()=>{
 
   // Wired 2026-09-07: no more demo/walkthrough data anywhere in this app --
   // every tab loads straight from the real Supabase project on every load.
-  if(tabVisible('mix')) loadMix();            // launch mode: hidden tab → skip its fetch
-  loadInvoicePriceMoves();                     // powers the always-visible Alerts bell (no token needed)
-  fetchCorrectionsQueue();                     // powers the Alerts bell / Review Queue (no token needed)
-  loadDailyBrief();                            // front page — fails quietly to placeholder copy
-  loadWeeklyBrief();                           // front page — fails quietly to placeholder copy
+  loadMix();
+  loadInvoicePriceMoves();
+  fetchCorrectionsQueue();
+  loadDailyBrief();
+  loadWeeklyBrief();
 
   updateWeeklyTiles();
 });
@@ -2775,81 +2781,41 @@ async function loadDailyBrief(){
   renderBrief(d);
 }
 
-// Dynamic front page: reveal only the slots the brief actually filled.
-// Nothing filled → the quiet state stays. A null stays a null — never a
-// placeholder wall, never an invented number.
 function renderBrief(d){
-  let any = false;
-  const show = id => { const el=document.getElementById(id); if(el) el.hidden=false; };
-  const fillParas = (id, paras) => {
-    if(!Array.isArray(paras) || !paras.length) return false;
-    const el = document.getElementById(id); if(!el) return false;
-    el.innerHTML = '';
-    paras.forEach(t => { const p=document.createElement('p'); p.textContent = escT(t); el.appendChild(p); });
-    return true;
-  };
-  const setTB = (tid,bid,obj) => {
-    if(!obj || (!obj.title && !obj.body)) return false;
-    if(obj.title){ const t=document.getElementById(tid); if(t) t.textContent = escT(obj.title); }
-    if(obj.body){ const el=document.getElementById(bid); if(el){ el.innerHTML=''; const p=document.createElement('p'); p.textContent=escT(obj.body); el.appendChild(p);} }
-    return true;
-  };
-  const tile = (secId,valId,trendId,obj) => {
-    if(!obj || obj.value==null || obj.value==='') return false;
-    const v=document.getElementById(valId); if(v) v.textContent=escT(obj.value);
-    if(obj.trend){ const t=document.getElementById(trendId); if(t){ t.textContent=escT(obj.trend);
-      const s=String(obj.trend).trim(); t.classList.toggle('up', s.startsWith('+')||/\bup\b/i.test(s)); t.classList.toggle('down', s.startsWith('-')||/\bdown\b/i.test(s)); } }
-    show(secId); return true;
-  };
-
-  // The Morning Read
-  if(d.headline || d.glance || (Array.isArray(d.lead_paragraphs) && d.lead_paragraphs.length)){
+  {
     if(d.headline){ const el=document.getElementById('wkHeadline'); if(el) el.textContent = escT(d.headline); }
-    if(d.glance){ const el=document.getElementById('wkGlance'); if(el) el.textContent = escT(d.glance); show('wkSecGlance'); }
+    if(d.glance){ const el=document.getElementById('wkGlance'); if(el) el.textContent = escT(d.glance); }
+    const fillParas = (id, paras) => {
+      if(!Array.isArray(paras) || !paras.length) return;
+      const el = document.getElementById(id); if(!el) return;
+      el.innerHTML = '';
+      paras.forEach(t => { const p=document.createElement('p'); p.textContent = escT(t); el.appendChild(p); });
+    };
     fillParas('wkLeadBody', d.lead_paragraphs);
-    show('wkSecRead'); show('wkDivRead'); any = true;
-  }
-
-  // Numbers grid (optional — tiles without a value stay hidden)
-  if([tile('wkTileLabor','wkLaborVal','wkLaborTrend', d.labor_vs_sales),
-      tile('wkTileInv','wkInvVal','wkInvTrend', d.inventory_vs_actual),
-      tile('wkTilePrime','wkPrimeVal','wkPrimeTrend', d.prime_cost)].some(Boolean)){
-    show('wkSecNumbers'); show('wkDivNumbers'); any = true;
-  }
-
-  // Number of the Day / Today's Weather
-  const nd = setTB('wkNumTitle','wkNumBody', d.number_of_day); if(nd) show('wkSecNum');
-  const wx = setTB('wkWxTitle','wkWxBody', d.weather); if(wx) show('wkSecWx');
-  if(nd || wx){ show('wkSecMidCols'); show('wkDivMid'); any = true; }
-
-  // Last Night
-  if(fillParas('wkLastNight', d.last_night_paragraphs)){ show('wkSecLast'); show('wkDivLast'); any = true; }
-
-  // Action For Today
-  if(Array.isArray(d.actions) && d.actions.length){
-    const wrap=document.getElementById('wkActions');
-    if(wrap){
-      wrap.innerHTML='';
-      d.actions.slice(0,3).forEach((a2,i)=>{
-        const item=document.createElement('div'); item.className='wk-action-item';
-        const num=document.createElement('div'); num.className='wk-action-num'; num.textContent=(i+1);
-        const body=document.createElement('div'); body.className='wk-action-body';
-        const t=document.createElement('div'); t.className='wk-action-title'; t.textContent=escT(a2.title);
-        const w=document.createElement('div'); w.className='wk-action-why'; w.textContent=escT(a2.why);
-        body.appendChild(t); body.appendChild(w); item.appendChild(num); item.appendChild(body); wrap.appendChild(item);
-      });
-      show('wkSecActions'); any = true;
+    fillParas('wkLastNight', d.last_night_paragraphs);
+    const setTB = (tid,bid,obj)=>{
+      if(!obj) return;
+      if(obj.title){ const t=document.getElementById(tid); if(t) t.textContent = escT(obj.title); }
+      if(obj.body){ const el=document.getElementById(bid); if(el){ el.innerHTML=''; const p=document.createElement('p'); p.textContent=escT(obj.body); el.appendChild(p);} }
+    };
+    setTB('wkNumTitle','wkNumBody', d.number_of_day);
+    setTB('wkWxTitle','wkWxBody', d.weather);
+    setTB('wkWatchTitle','wkWatchBody', d.watch);
+    setTB('wkStickTitle','wkStickBody', d.stick);
+    if(Array.isArray(d.actions) && d.actions.length){
+      const wrap=document.getElementById('wkActions');
+      if(wrap){
+        wrap.innerHTML='';
+        d.actions.slice(0,3).forEach((a2,i)=>{
+          const item=document.createElement('div'); item.className='wk-action-item';
+          const num=document.createElement('div'); num.className='wk-action-num'; num.textContent=(i+1);
+          const body=document.createElement('div'); body.className='wk-action-body';
+          const t=document.createElement('div'); t.className='wk-action-title'; t.textContent=escT(a2.title);
+          const w=document.createElement('div'); w.className='wk-action-why'; w.textContent=escT(a2.why);
+          body.appendChild(t); body.appendChild(w); item.appendChild(num); item.appendChild(body); wrap.appendChild(item);
+        });
+      }
     }
-  }
-
-  // Watch Today / Stick With You
-  const wt = setTB('wkWatchTitle','wkWatchBody', d.watch); if(wt) show('wkSecWatch');
-  const st = setTB('wkStickTitle','wkStickBody', d.stick); if(st) show('wkSecStick');
-  if(wt || st){ show('wkSecWatchCols'); any = true; }
-
-  if(any){
-    document.getElementById('wkQuiet').hidden = true;
-    document.getElementById('wkBody').hidden = false;
   }
 }
 
@@ -3597,7 +3563,7 @@ window.PrepCookModule = {
   reload: () => pmLoadItems().then(pmRender),
 };
 
-if(tabVisible('prep')) pmLoadItems().then(() => { pmRender(); if(typeof alcRender==='function') alcRender(); });
+pmLoadItems().then(() => { pmRender(); if(typeof alcRender==='function') alcRender(); });
 })();
 </script>
 <script>
@@ -3966,7 +3932,7 @@ uplRenderRecent();
     }
   }
 
-  if(tabVisible('guide')) guideLoad().then(()=>{ if(typeof guideRender==='function') guideRender(); if(typeof alcRender==='function') alcRender(); });
+  guideLoad().then(()=>{ if(typeof guideRender==='function') guideRender(); if(typeof alcRender==='function') alcRender(); });
 
   function guideStatus(it){
     if(it.onHand <= 0) return 'flagged';          // critical / out
@@ -4290,7 +4256,7 @@ uplRenderRecent();
     }
   }
 
-  if(tabVisible('beverage')) bevLoad().then(()=>{ if(typeof bevRender==='function') bevRender(); if(typeof alcRender==='function') alcRender(); });
+  bevLoad().then(()=>{ if(typeof bevRender==='function') bevRender(); if(typeof alcRender==='function') alcRender(); });
 
   function bevStatus(it){
     if(it.onHand <= 0) return 'flagged';          // critical / out
@@ -4892,7 +4858,7 @@ uplRenderRecent();
   }
   window.schRenderLaborStats = schRenderLaborStats;
 
-  if(tabVisible('schedule')) schLoad(schWeekMonday).then(schRender);
+  schLoad(schWeekMonday).then(schRender);
   window.schRender = schRender;
 })();
 </script>
