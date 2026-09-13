@@ -899,15 +899,18 @@ td{border-bottom:1px solid transparent;background-image:linear-gradient(var(--bg
 
 
 <!-- TABS -->
+<!-- LAUNCH MODE (temporary): only Daily + Upload are shown until real data is in.
+     The hidden tabs below still work fully — to bring one back, just delete the
+     style="display:none" on its button. To restore everything, remove all of them. -->
 <div class="tabs">
   <button class="tab on" id="tab-weekly"  onclick="showTab('weekly')">Daily</button>
-  <button class="tab"    id="tab-prep"    onclick="showTab('prep')">Prep</button>
-  <button class="tab"    id="tab-guide"   onclick="showTab('guide')">Order Food</button>
-  <button class="tab"    id="tab-beverage" onclick="showTab('beverage')">Order Beverage</button>
-  <button class="tab"    id="tab-mix"     onclick="showTab('mix')">Product Mix</button>
-  <button class="tab"    id="tab-inv"     onclick="showTab('inv')">Invoices</button>
-  <button class="tab"    id="tab-corrections" onclick="showTab('corrections')">Review Queue</button>
-  <button class="tab"    id="tab-schedule" onclick="showTab('schedule')">Schedule</button>
+  <button class="tab"    id="tab-prep"    onclick="showTab('prep')" style="display:none">Prep</button>
+  <button class="tab"    id="tab-guide"   onclick="showTab('guide')" style="display:none">Order Food</button>
+  <button class="tab"    id="tab-beverage" onclick="showTab('beverage')" style="display:none">Order Beverage</button>
+  <button class="tab"    id="tab-mix"     onclick="showTab('mix')" style="display:none">Product Mix</button>
+  <button class="tab"    id="tab-inv"     onclick="showTab('inv')" style="display:none">Invoices</button>
+  <button class="tab"    id="tab-corrections" onclick="showTab('corrections')" style="display:none">Review Queue</button>
+  <button class="tab"    id="tab-schedule" onclick="showTab('schedule')" style="display:none">Schedule</button>
   <button class="tab"    id="tab-upload"  onclick="showTab('upload')">Upload</button>
 </div>
 
@@ -1818,6 +1821,12 @@ function showTab(id){
   document.getElementById('tab-'+id).classList.add('on');
   window.scrollTo({top:0, behavior:'smooth'});
 }
+
+// LAUNCH MODE: a tab is "live" only if its button is actually shown (not hidden
+// with style="display:none"). We use this to auto-load data only for visible
+// tabs, so hidden tabs make no failing requests and fire no error popups on the
+// front page. Un-hide a tab's button and its data loads again on the next refresh.
+function tabVisible(id){ const b = document.getElementById('tab-'+id); return !!b && b.style.display !== 'none'; }
 
 // Floating Alerts panel — mirrors miseToggle()'s open/close pattern.
 function alcToggleFab(){
@@ -2751,11 +2760,11 @@ document.addEventListener('DOMContentLoaded',()=>{
 
   // Wired 2026-09-07: no more demo/walkthrough data anywhere in this app --
   // every tab loads straight from the real Supabase project on every load.
-  loadMix();
-  loadInvoicePriceMoves();
-  fetchCorrectionsQueue();
-  loadDailyBrief();
-  loadWeeklyBrief();
+  if(tabVisible('mix')) loadMix();            // launch mode: hidden tab → skip its fetch
+  loadInvoicePriceMoves();                     // powers the always-visible Alerts bell (no token needed)
+  fetchCorrectionsQueue();                     // powers the Alerts bell / Review Queue (no token needed)
+  loadDailyBrief();                            // front page — fails quietly to placeholder copy
+  loadWeeklyBrief();                           // front page — fails quietly to placeholder copy
 
   updateWeeklyTiles();
 });
@@ -3563,7 +3572,7 @@ window.PrepCookModule = {
   reload: () => pmLoadItems().then(pmRender),
 };
 
-pmLoadItems().then(() => { pmRender(); if(typeof alcRender==='function') alcRender(); });
+if(tabVisible('prep')) pmLoadItems().then(() => { pmRender(); if(typeof alcRender==='function') alcRender(); });
 })();
 </script>
 <script>
@@ -3932,7 +3941,7 @@ uplRenderRecent();
     }
   }
 
-  guideLoad().then(()=>{ if(typeof guideRender==='function') guideRender(); if(typeof alcRender==='function') alcRender(); });
+  if(tabVisible('guide')) guideLoad().then(()=>{ if(typeof guideRender==='function') guideRender(); if(typeof alcRender==='function') alcRender(); });
 
   function guideStatus(it){
     if(it.onHand <= 0) return 'flagged';          // critical / out
@@ -4256,7 +4265,7 @@ uplRenderRecent();
     }
   }
 
-  bevLoad().then(()=>{ if(typeof bevRender==='function') bevRender(); if(typeof alcRender==='function') alcRender(); });
+  if(tabVisible('beverage')) bevLoad().then(()=>{ if(typeof bevRender==='function') bevRender(); if(typeof alcRender==='function') alcRender(); });
 
   function bevStatus(it){
     if(it.onHand <= 0) return 'flagged';          // critical / out
@@ -4858,7 +4867,7 @@ uplRenderRecent();
   }
   window.schRenderLaborStats = schRenderLaborStats;
 
-  schLoad(schWeekMonday).then(schRender);
+  if(tabVisible('schedule')) schLoad(schWeekMonday).then(schRender);
   window.schRender = schRender;
 })();
 </script>

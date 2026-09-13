@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<!--
+═══════════════════════════════════════════════════════════════════════
+  MISE.AI — OWNER APP · The Overview
+═══════════════════════════════════════════════════════════════════════
+
+  The owner "does everything," so this is one executive read that folds
+  in a little of all three role-briefs from the MISE Build Sheet:
+    • Owner (Marcus)  — money first: sales vs budget, prime cost, the
+                        cash impact, and decisions framed Approve/Ask/Hold
+    • Chef (Diego)    — one kitchen line (prep vs par, variance in $)
+    • Manager (Sofia) — one floor line (covers, a server signal)
+
+  DYNAMIC PAGE — the front page composes itself from the data:
+    • Postgres feeds the numbers (WIRED — a null stays a null)
+    • the scenario engine decides which slots fire (WIRING)
+    • the AI writes the narrative, reading like a chef talking to the
+      owner (AI)
+  A slot renders ONLY when there is something real behind it. When
+  nothing has fired, the page shows a single quiet state — never a wall
+  of placeholder copy, never an invented number. (Build Sheet rule #3.)
+
+  Every section below starts hidden; renderOwnerBrief() reveals only the
+  ones the backend actually filled.
+═══════════════════════════════════════════════════════════════════════
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Owner — Overview</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;0,900;1,400&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+[hidden]{display:none!important;}
+:root{
+  --bg-app: #0A0A0C;
+  --bg-card: #141416;
+  --bg-recessed: #060608;
+  --bg-emboss: #1E1E22;
+  --text-hero: #FFFFFF;
+  --text-muted: #F0F4F8;
+  --text-faint: #A8AEB8;
+  --brand-accent: #FDE047;
+  --brand-accent-hover: #FFED4E;
+  --alert-success: #CCFBF1;
+  --alert-success-wash: rgba(204,251,241,0.12);
+  --alert-danger: #FF6B6B;
+  --alert-danger-wash: rgba(255,107,107,0.12);
+  --border-subtle: rgba(240,244,248,0.20);
+  --border-strong: rgba(240,244,248,0.40);
+  --shadow-soft: rgba(0,0,0,0.7);
+  --shadow-softer: rgba(0,0,0,0.45);
+  --brick: #1C1E26;
+  --edge-highlight: rgba(253,224,71,0.35);
+  --line-fade: linear-gradient(90deg, #1C1E26 0%, #0A0A0C 50%, #FDE047 100%);
+  --font-mono:'Fraunces',Georgia,serif;
+  --font-display:'Fraunces',Georgia,serif;
+  --font-serif:'Fraunces',Georgia,serif;
+  --font-heading:'Fraunces',Georgia,serif;
+}
+body{font-family:var(--font-serif);min-height:100vh;color:var(--text-hero);background:var(--bg-app);}
+b,strong{font-weight:400;}
+::-webkit-scrollbar{width:5px;}
+::-webkit-scrollbar-track{background:var(--bg-app);}
+::-webkit-scrollbar-thumb{background:var(--border-subtle);border-radius:3px;}
+
+/* HEADER */
+.header{background:var(--bg-card);border-bottom:1px solid var(--border-subtle);padding:10px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;position:sticky;top:0;z-index:200;box-shadow:0 1px 0 var(--border-subtle),0 4px 14px var(--shadow-softer);}
+.metal-gold{color:var(--brand-accent);}
+.brand-main{font-family:var(--font-display);font-size:11px;font-weight:400;letter-spacing:.18em;text-transform:uppercase;line-height:1;color:var(--text-hero);}
+.brand-sub{font-family:var(--font-mono);font-size:12px;color:var(--text-muted);letter-spacing:.08em;margin-top:2px;}
+.home-link{font-family:var(--font-mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--brand-accent);text-decoration:none;border:1px solid var(--border-subtle);padding:6px 12px;border-radius:3px;white-space:nowrap;}
+.home-link:hover{border-color:var(--brand-accent);}
+
+/* ═════ OVERVIEW (newspaper frame) ═════ */
+.wk-wrap{max-width:1100px;margin:0 auto;padding:24px 16px 80px;}
+.wk-frame{border:1px solid var(--border-subtle);border-radius:6px;overflow:hidden;box-shadow:0 4px 16px var(--shadow-soft);}
+.wk-masthead{background:linear-gradient(180deg,rgba(240,244,248,0.10),rgba(240,244,248,0.02) 55%),var(--bg-card);padding:26px 28px;text-align:center;}
+.wk-eyebrow{display:inline-block;font-family:var(--font-mono);font-size:11px;letter-spacing:.3em;color:var(--brand-accent-hover);text-transform:uppercase;margin-bottom:14px;padding:5px 14px;border:1px solid var(--brand-accent);border-radius:20px;background:rgba(240,244,248,0.10);}
+.wk-title{font-family:var(--font-serif);font-size:42px;font-weight:400;color:var(--text-hero);line-height:1;letter-spacing:-.01em;font-variant:small-caps;}
+.wk-title em{font-style:normal;color:var(--brand-accent);font-variant:small-caps;}
+.wk-sub{font-family:var(--font-mono);font-size:11px;letter-spacing:.2em;color:var(--text-muted);margin-top:10px;text-transform:uppercase;}
+.wk-col{background:var(--bg-card);}
+.wk-lead{padding:28px 32px 8px;}
+.wk-lead-h{font-family:var(--font-heading);font-size:17px;font-weight:400;color:var(--text-hero);line-height:1.3;margin-bottom:10px;letter-spacing:.04em;text-transform:uppercase;}
+.wk-lead-callout{margin:0 0 16px 0;padding:14px 18px;border-left:4px solid var(--text-hero);border-top:3px solid var(--brand-accent);background:var(--bg-recessed);border-radius:0 3px 3px 0;}
+.wk-lead-callout-lbl{font-family:var(--font-mono);font-size:11px;letter-spacing:.22em;color:var(--text-muted);text-transform:uppercase;margin-bottom:5px;}
+.wk-lead-callout-txt{font-family:var(--font-mono);font-size:13px;color:var(--text-hero);line-height:1.5;}
+.wk-lead-body{font-family:var(--font-serif);font-size:13px;line-height:1.7;color:var(--text-hero);}
+.wk-lead-body p+p{margin-top:10px;}
+.wk-divider{margin:28px 32px;border:0;border-top:1px solid var(--border-subtle);}
+.wk-numbers{padding:0 32px 24px;}
+.wk-num-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+@media(max-width:640px){.wk-num-grid{grid-template-columns:repeat(1,1fr);}}
+.wk-num{position:relative;background:linear-gradient(180deg,var(--bg-emboss) 0%,var(--bg-recessed) 100%);border:1px solid var(--border-strong);border-top:none;border-left:4px solid #000;border-radius:5px;padding:16px 14px 14px;text-align:center;box-shadow:0 1px 0 rgba(255,255,255,0.6) inset,0 -6px 10px -8px rgba(20,14,10,0.35) inset,0 6px 14px -4px var(--shadow-soft),0 2px 4px var(--shadow-softer);}
+.wk-num::before{content:"";position:absolute;top:-3px;left:-1px;right:-1px;height:4px;border-radius:5px 5px 0 0;background:var(--brick);box-shadow:0 1px 0 var(--edge-highlight) inset,0 2px 6px var(--shadow-soft),0 -1px 0 rgba(0,0,0,0.4);}
+.wk-num::after{content:"";position:absolute;top:3px;left:0;right:0;height:10px;background:linear-gradient(180deg,rgba(0,0,0,0.18),rgba(0,0,0,0));pointer-events:none;border-radius:5px 5px 0 0;}
+.wk-num-lbl{font-family:var(--font-mono);font-size:11px;color:var(--text-muted);letter-spacing:.14em;text-transform:uppercase;margin-bottom:4px;}
+.wk-num-val{font-family:var(--font-display);font-size:22px;font-weight:400;color:var(--text-hero);line-height:1;}
+.wk-num-trend{font-family:var(--font-mono);font-size:11px;margin-top:4px;color:var(--text-muted);}
+.wk-num-trend.up{color:var(--alert-success);}
+.wk-num-trend.down{color:var(--alert-danger);}
+.wk-cols{display:grid;grid-template-columns:1fr 1fr;padding:0 32px 20px;gap:0;}
+@media(max-width:680px){.wk-cols{grid-template-columns:1fr;}}
+.wk-section{padding:4px 22px 20px 0;border-right:1px dashed var(--border-subtle);}
+.wk-cols .wk-section:last-child{border-right:none;padding-right:0;padding-left:22px;}
+@media(max-width:680px){.wk-section{border-right:none;padding-right:0;padding-left:0;border-bottom:1px dashed var(--border-subtle);margin-bottom:12px;}.wk-cols .wk-section:last-child{padding-left:0;}}
+.wk-sec-lbl{font-family:var(--font-mono);font-size:11px;letter-spacing:.22em;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;}
+.wk-sec-h{font-family:var(--font-heading);font-size:13px;font-weight:400;color:var(--text-hero);margin-bottom:8px;line-height:1.3;text-transform:uppercase;letter-spacing:.04em;}
+.wk-sec-body{font-family:var(--font-serif);font-size:13px;line-height:1.6;color:var(--text-muted);}
+.wk-sec-body p+p{margin-top:8px;}
+.wk-actions{margin:0 32px 24px;}
+.wk-actions-h{font-family:var(--font-mono);font-size:11px;letter-spacing:.22em;color:var(--text-muted);text-transform:uppercase;margin-bottom:14px;}
+.wk-foot{background:var(--bg-card);border-top:1px solid var(--border-subtle);padding:18px 28px;text-align:center;font-family:var(--font-mono);font-size:11px;letter-spacing:.16em;color:var(--text-muted);text-transform:uppercase;}
+
+/* EXECUTIVE DECISION CARDS (owner voice · Approve/Ask/Hold) */
+.dec-item{display:flex;gap:16px;padding:16px 0;border-top:1px dashed var(--border-subtle);}
+.dec-item:first-of-type{border-top:none;}
+.dec-num{font-family:var(--font-display);font-size:22px;font-weight:400;color:var(--text-hero);line-height:1;min-width:32px;}
+.dec-body{flex:1;}
+.dec-title{font-family:var(--font-heading);font-size:13px;font-weight:400;color:var(--text-hero);margin-bottom:4px;line-height:1.3;}
+.dec-why{font-family:var(--font-serif);font-size:13px;line-height:1.6;color:var(--text-muted);margin-bottom:10px;}
+.dec-impact{font-family:var(--font-mono);font-size:12px;letter-spacing:.04em;color:var(--alert-danger);margin-bottom:10px;}
+.dec-pills{display:flex;gap:8px;flex-wrap:wrap;}
+.dec-pill{font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;padding:6px 14px;border-radius:16px;border:1px solid var(--border-subtle);background:var(--bg-recessed);color:var(--text-muted);cursor:default;}
+.dec-pill.approve{border-color:var(--alert-success);color:var(--alert-success);}
+.dec-pill.ask{border-color:var(--brand-accent);color:var(--brand-accent);}
+.dec-pill.hold{border-color:var(--alert-danger);color:var(--alert-danger);}
+
+/* QUIET STATE — shown only when nothing has fired */
+.ov-quiet{background:var(--bg-card);padding:56px 28px 60px;text-align:center;}
+.ov-quiet-icon{font-size:30px;margin-bottom:16px;opacity:.85;}
+.ov-quiet-t{font-family:var(--font-heading);font-size:20px;font-weight:400;color:var(--text-hero);margin-bottom:10px;font-variant:small-caps;letter-spacing:.02em;}
+.ov-quiet-d{font-family:var(--font-serif);font-size:13.5px;color:var(--text-muted);line-height:1.7;max-width:460px;margin:0 auto;}
+
+/* simple list rows used by working / invoices / running-low slots */
+.ov-row{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px dashed var(--border-subtle);font-family:var(--font-mono);font-size:12.5px;}
+.ov-row:first-child{border-top:none;}
+.ov-row b{color:var(--text-hero);}
+.ov-row .v{color:var(--text-muted);white-space:nowrap;}
+.ov-row .v.up{color:var(--alert-danger);}
+.ov-row .v.down{color:var(--alert-success);}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div>
+    <div class="brand-main">Mise<span class="metal-gold">.AI</span> · Owner</div>
+    <div class="brand-sub" id="headerDate">—</div>
+  </div>
+  <a href="../" class="home-link">← Home</a>
+</div>
+
+<div class="wk-wrap">
+  <div class="wk-frame">
+
+    <!-- MASTHEAD (always shown) -->
+    <div class="wk-masthead">
+      <div class="wk-eyebrow">MISEai · Executive Brief</div>
+      <div class="wk-title">The <em>Overview</em></div>
+      <div class="wk-sub" id="ovSubDate">—</div>
+    </div>
+
+    <!-- QUIET STATE — visible until the backend fills at least one slot -->
+    <div class="ov-quiet" id="ovQuiet">
+      <div class="ov-quiet-icon">☕️</div>
+      <div class="ov-quiet-t">Nothing to flag yet</div>
+      <div class="ov-quiet-d">Your first overview writes itself the morning after a full day of data lands — sales against budget, where food and labor fell, and only the calls worth your attention. Until then there's nothing to put in front of you, so we don't.</div>
+    </div>
+
+    <!-- DYNAMIC BODY — every section starts hidden; only filled slots appear -->
+    <div class="wk-col" id="ovBody" hidden>
+
+      <!-- The Morning Read (AI · chef-to-owner voice) -->
+      <div class="wk-lead" id="secRead" hidden>
+        <div class="wk-lead-h" id="ovHeadline"></div>
+        <div class="wk-lead-callout" id="secGlance" hidden>
+          <div class="wk-lead-callout-lbl">At a glance</div>
+          <div class="wk-lead-callout-txt" id="ovGlance"></div>
+        </div>
+        <div class="wk-lead-body" id="ovLeadBody"></div>
+      </div>
+
+      <hr class="wk-divider" id="divRead" hidden>
+
+      <!-- Numbers grid (WIRED) — tiles without a value stay hidden -->
+      <div class="wk-numbers" id="secNumbers" hidden>
+        <div class="wk-num-grid" id="ovNumGrid"></div>
+      </div>
+
+      <hr class="wk-divider" id="divNumbers" hidden>
+
+      <!-- Executive Decisions (Approve / Ask / Hold) -->
+      <div class="wk-actions" id="secDecisions" hidden>
+        <div class="wk-actions-h">Decisions Waiting On You</div>
+        <div id="ovDecisions"></div>
+      </div>
+
+      <hr class="wk-divider" id="divDecisions" hidden>
+
+      <!-- Working / Not Working -->
+      <div class="wk-cols" id="secPmix" hidden>
+        <div class="wk-section" id="secWorking" hidden>
+          <div class="wk-sec-lbl">Working</div>
+          <div class="wk-sec-h">Carrying The Menu</div>
+          <div class="wk-sec-body" id="ovWorking"></div>
+        </div>
+        <div class="wk-section" id="secNotWorking" hidden>
+          <div class="wk-sec-lbl">Not Working</div>
+          <div class="wk-sec-h">Dead Weight</div>
+          <div class="wk-sec-body" id="ovNotWorking"></div>
+        </div>
+      </div>
+
+      <hr class="wk-divider" id="divPmix" hidden>
+
+      <!-- Invoices That Matter / Running Low -->
+      <div class="wk-cols" id="secSupply" hidden>
+        <div class="wk-section" id="secInvoices" hidden>
+          <div class="wk-sec-lbl">Invoices That Matter</div>
+          <div class="wk-sec-h">Price Moves</div>
+          <div class="wk-sec-body" id="ovInvoices"></div>
+        </div>
+        <div class="wk-section" id="secRunningLow" hidden>
+          <div class="wk-sec-lbl">Running Low · Critical</div>
+          <div class="wk-sec-h">Won't Cover The Night</div>
+          <div class="wk-sec-body" id="ovRunningLow"></div>
+        </div>
+      </div>
+
+      <hr class="wk-divider" id="divSupply" hidden>
+
+      <!-- Across the House (chef + manager blend) -->
+      <div class="wk-cols" id="secHouse" hidden>
+        <div class="wk-section" id="secKitchen" hidden>
+          <div class="wk-sec-lbl">Kitchen</div>
+          <div class="wk-sec-h">From The Chef</div>
+          <div class="wk-sec-body" id="ovKitchen"></div>
+        </div>
+        <div class="wk-section" id="secFloor" hidden>
+          <div class="wk-sec-lbl">Floor</div>
+          <div class="wk-sec-h">From The Manager</div>
+          <div class="wk-sec-body" id="ovFloor"></div>
+        </div>
+      </div>
+
+      <hr class="wk-divider" id="divHouse" hidden>
+
+      <!-- Stick With You -->
+      <div class="wk-actions" id="secStick" hidden>
+        <div class="wk-actions-h">Stick With You</div>
+        <div class="wk-sec-body" id="ovStick"></div>
+      </div>
+
+    </div><!-- end ovBody -->
+
+    <div class="wk-foot">Cash impact over percentages · Locked at 6:00 · Your numbers, never a template</div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────────
+// Same restaurant as the chef app. The only id here is the public
+// restaurant id. The per-restaurant api_token is intentionally NOT
+// committed (see the chef app note) — token-gated slots simply stay
+// unrendered until that token is supplied through deploy-time config.
+const MISE_RESTAURANT_ID = '7d1f0a2e-6c44-4b9a-9f31-2ab8e5c07d10';
+const RESTAURANT_CODE     = 'MISE-0010';
+const API_BASE            = 'https://mise-ai-98230267130.us-west1.run.app';
+
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAYS_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+function fmtDate(d){ return `${DAYS_FULL[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`; }
+function show(id){ const el=document.getElementById(id); if(el) el.hidden=false; }
+function esc(s){ return String(s??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+document.addEventListener('DOMContentLoaded', () => {
+  const today = new Date();
+  document.getElementById('headerDate').textContent = fmtDate(today);
+  document.getElementById('ovSubDate').textContent = fmtDate(today);
+  loadOwnerBrief();
+});
+
+// ── OWNER BRIEF ─────────────────────────────────────────────────────
+// Pulls the owner's morning brief. Postgres feeds the numbers, the
+// scenario engine decides what fired, the AI writes the prose (reading
+// like a chef talking to the owner). If the endpoint isn't live yet or
+// this restaurant has no data, nothing fires and the quiet state stays.
+// Expected response shape (every field optional — a null stays a null):
+//   { headline, glance, lead_paragraphs:[...],
+//     metrics:[{ label, value, trend }],                       // 0–6 tiles
+//     decisions:[{ title, why, cash_impact }],
+//     working:[{ name, detail }], not_working:[{ name, detail }],
+//     invoices:[{ name, detail, dir }], running_low:[{ name, detail }],
+//     kitchen_line, floor_line, stick }
+async function loadOwnerBrief(){
+  let data;
+  try{
+    const res = await fetch(`${API_BASE}/api/daily-brief?restaurant_code=${encodeURIComponent(RESTAURANT_CODE)}&role=owner`);
+    if(!res.ok) return;                 // quiet state stays, no error shown
+    data = await res.json();
+  }catch(e){
+    console.warn('Owner brief not live yet:', e.message);
+    return;                             // the Overview never breaks
+  }
+  if(data && typeof data === 'object') renderOwnerBrief(data);
+}
+
+function renderOwnerBrief(d){
+  let any = false;
+
+  // The Morning Read
+  if(d.headline || d.glance || (Array.isArray(d.lead_paragraphs) && d.lead_paragraphs.length)){
+    if(d.headline) document.getElementById('ovHeadline').textContent = d.headline;
+    if(d.glance){ document.getElementById('ovGlance').textContent = d.glance; show('secGlance'); }
+    if(Array.isArray(d.lead_paragraphs) && d.lead_paragraphs.length)
+      document.getElementById('ovLeadBody').innerHTML = d.lead_paragraphs.map(p=>`<p>${esc(p)}</p>`).join('');
+    show('secRead'); show('divRead'); any = true;
+  }
+
+  // Numbers grid — only tiles that carry a real value
+  if(Array.isArray(d.metrics)){
+    const tiles = d.metrics.filter(m => m && m.value!=null && m.value!=='');
+    if(tiles.length){
+      document.getElementById('ovNumGrid').innerHTML = tiles.map(m => {
+        const t = String(m.trend??'').trim();
+        const dir = (t.startsWith('+')||/\bup\b/i.test(t)) ? 'up' : (t.startsWith('-')||/\bdown\b/i.test(t)) ? 'down' : '';
+        return `<div class="wk-num"><div class="wk-num-lbl">${esc(m.label||'')}</div>`
+             + `<div class="wk-num-val">${esc(m.value)}</div>`
+             + (t ? `<div class="wk-num-trend ${dir}">${esc(t)}</div>` : `<div class="wk-num-trend">&nbsp;</div>`)
+             + `</div>`;
+      }).join('');
+      show('secNumbers'); show('divNumbers'); any = true;
+    }
+  }
+
+  // Executive Decisions
+  if(Array.isArray(d.decisions) && d.decisions.length){
+    document.getElementById('ovDecisions').innerHTML = d.decisions.map((dec,i)=>`
+      <div class="dec-item">
+        <div class="dec-num">${i+1}</div>
+        <div class="dec-body">
+          <div class="dec-title">${esc(dec.title||'')}</div>
+          ${dec.why ? `<div class="dec-why">${esc(dec.why)}</div>` : ''}
+          ${dec.cash_impact ? `<div class="dec-impact">${esc(dec.cash_impact)}</div>` : ''}
+          <div class="dec-pills"><span class="dec-pill approve">Approve</span><span class="dec-pill ask">Ask</span><span class="dec-pill hold">Hold</span></div>
+        </div>
+      </div>`).join('');
+    show('secDecisions'); show('divDecisions'); any = true;
+  }
+
+  // Working / Not Working
+  const working = renderRows('ovWorking', d.working);
+  const notWorking = renderRows('ovNotWorking', d.not_working);
+  if(working){ show('secWorking'); }
+  if(notWorking){ show('secNotWorking'); }
+  if(working || notWorking){ show('secPmix'); show('divPmix'); any = true; }
+
+  // Invoices That Matter / Running Low
+  const inv = renderRows('ovInvoices', d.invoices);
+  const low = renderRows('ovRunningLow', d.running_low);
+  if(inv){ show('secInvoices'); }
+  if(low){ show('secRunningLow'); }
+  if(inv || low){ show('secSupply'); show('divSupply'); any = true; }
+
+  // Across the House
+  let house = false;
+  if(d.kitchen_line){ document.getElementById('ovKitchen').innerHTML = `<p>${esc(d.kitchen_line)}</p>`; show('secKitchen'); house = true; }
+  if(d.floor_line){ document.getElementById('ovFloor').innerHTML = `<p>${esc(d.floor_line)}</p>`; show('secFloor'); house = true; }
+  if(house){ show('secHouse'); show('divHouse'); any = true; }
+
+  // Stick With You
+  if(d.stick){ document.getElementById('ovStick').innerHTML = `<p>${esc(d.stick)}</p>`; show('secStick'); any = true; }
+
+  if(any){
+    document.getElementById('ovQuiet').hidden = true;
+    document.getElementById('ovBody').hidden = false;
+  }
+}
+
+// Renders a list of {name, detail, dir} rows into a slot. Returns true
+// if it drew anything, false if the list was empty/absent.
+function renderRows(id, list){
+  if(!Array.isArray(list) || !list.length) return false;
+  document.getElementById(id).innerHTML = list.map(r =>
+    `<div class="ov-row"><b>${esc(r.name||'')}</b><span class="v ${r.dir||''}">${esc(r.detail||'')}</span></div>`
+  ).join('');
+  return true;
+}
+</script>
+</body>
+</html>
